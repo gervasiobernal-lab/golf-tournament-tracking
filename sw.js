@@ -1,7 +1,7 @@
 // sw.js — Service worker: guarda la app en el celular para que abra sin señal.
 // Si cambiás algún archivo de la app, subí el número de versión para que
 // los celulares descarguen la versión nueva.
-const VERSION = "ryder-v1";
+const VERSION = "ryder-v2";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "golf.js", "data.js", "firebase-config.js",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png"
