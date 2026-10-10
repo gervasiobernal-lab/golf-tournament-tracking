@@ -282,7 +282,20 @@ document.addEventListener("submit", async e => {
   e.preventDefault();
   UI.busy = true; UI.loginErr = null; render();
   try { await data.adminLogin(document.getElementById("lg-email").value.trim(), document.getElementById("lg-pass").value); }
-  catch (err) { UI.loginErr = "No se pudo entrar. Revisá email y contraseña."; }
+  catch (err) {
+    // Traducimos el código de Firebase a una explicación concreta.
+    const msgs = {
+      "auth/invalid-credential": "Email o contraseña incorrectos.",
+      "auth/wrong-password": "Contraseña incorrecta.",
+      "auth/user-not-found": "No existe un usuario con ese email en Firebase.",
+      "auth/invalid-email": "El email no tiene un formato válido.",
+      "auth/operation-not-allowed": "El acceso con email y contraseña no está habilitado en Firebase (Authentication > Método de acceso).",
+      "auth/unauthorized-domain": "Este sitio no está en los dominios autorizados de Firebase (Authentication > Configuración).",
+      "auth/too-many-requests": "Demasiados intentos fallidos. Esperá unos minutos y probá de nuevo.",
+      "auth/network-request-failed": "No hay conexión con Firebase. Revisá internet."
+    };
+    UI.loginErr = (msgs[err.code] || "No se pudo entrar.") + ` (código: ${err.code || err.message})`;
+  }
   UI.busy = false; render();
 });
 
