@@ -280,8 +280,12 @@ document.addEventListener("click", e => {
 document.addEventListener("submit", async e => {
   if (e.target.id !== "login") return;
   e.preventDefault();
+  // Leer los campos ANTES de redibujar: render() reemplaza el formulario
+  // por uno nuevo y los campos quedarían vacíos.
+  const email = document.getElementById("lg-email").value.trim();
+  const pass = document.getElementById("lg-pass").value;
   UI.busy = true; UI.loginErr = null; render();
-  try { await data.adminLogin(document.getElementById("lg-email").value.trim(), document.getElementById("lg-pass").value); }
+  try { await data.adminLogin(email, pass); }
   catch (err) {
     // Traducimos el código de Firebase a una explicación concreta.
     const msgs = {

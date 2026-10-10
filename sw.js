@@ -2,7 +2,7 @@
 // Archivos de la app: primero intenta la red (así siempre toma la última
 // versión publicada) y, si no hay señal, usa la copia guardada.
 // Si cambiás algún archivo de la app, subí igual el número de versión.
-const VERSION = "ryder-v5";
+const VERSION = "ryder-v6";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "golf.js", "data.js", "firebase-config.js",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png"
