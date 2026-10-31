@@ -62,3 +62,37 @@ export function seedClasif() {
     players: r.map(([name, s], i) => ({ id: "c" + i, name, cards: s == null ? {} : { f1: s } }))
   };
 }
+
+// ---------- Carga hoyo por hoyo ----------
+// Tarjeta del Club de Campo Mendoza (fuente: golfingrecord.com, a confirmar
+// con la tarjeta del club; el admin la puede corregir en la página).
+export const DEFAULT_HOLES = [
+  [4,11],[4,3],[5,9],[3,17],[4,15],[4,5],[5,7],[3,13],[4,1],
+  [4,16],[3,14],[4,2],[5,8],[4,12],[4,4],[3,18],[4,10],[5,6]
+].map(([par, si]) => ({ par, si }));
+
+// Golpes que recibe en un hoyo un jugador de hándicap `h` (negativo = plus: devuelve).
+export function strokesOn(h, si) {
+  if (h >= 0) return Math.floor(h / 18) + (si <= h % 18 ? 1 : 0);
+  const g = -h;
+  return -(Math.floor(g / 18) + (si > 18 - (g % 18) ? 1 : 0));
+}
+
+// Resumen de una tarjeta en vivo: { thru, gross, netToPar, net18 }.
+// card = { h1: 5, h2: 4, ... }; hcp puede faltar (entonces no hay neto).
+export function liveSummary(card, hcp, holes) {
+  let thru = 0, gross = 0, net = 0;
+  holes.forEach((h, i) => {
+    const v = card?.["h" + (i + 1)];
+    if (typeof v !== "number") return;
+    thru++; gross += v;
+    net += v - h.par - (typeof hcp === "number" ? strokesOn(hcp, h.si) : 0);
+  });
+  const hasHcp = typeof hcp === "number";
+  return {
+    thru, gross,
+    netToPar: hasHcp ? net : null,
+    grossToPar: holes.reduce((a, h, i) => typeof card?.["h" + (i + 1)] === "number" ? a + card["h" + (i + 1)] - h.par : a, 0),
+    net18: thru === 18 && hasHcp ? gross - hcp : null
+  };
+}

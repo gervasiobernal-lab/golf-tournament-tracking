@@ -43,6 +43,20 @@
     table.edit input.flabel{width:58px;font-weight:600}
     table.edit input:disabled{opacity:.35}
     .banner a{color:var(--muted)}
+    .card.prov{border-style:dashed}
+    .dtabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:0 -16px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+    .dtabs button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 4px;font-weight:600;font-size:13px;color:var(--muted)}
+    .dtabs button[aria-selected="true"]{background:var(--fairway);color:var(--fairway-ink);border-color:transparent}
+    .fpick{display:flex;gap:6px;margin:8px 0}
+    .fpick button{flex:1;border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px;font-weight:600}
+    .fpick button[aria-pressed="true"]{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold);background:var(--surface)}
+    .mysum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+    .mysum span{display:flex;flex-direction:column;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 2px}
+    .mysum small{font-size:11px;color:var(--muted)}
+    .mysum b{font-family:var(--f-display);font-size:22px}
+    table.lb td.big{font-family:var(--f-display);font-weight:700;font-size:18px}
+    table.lb td.under{color:var(--teamB)}
+    table.lb small{color:var(--muted)}
   </style>
 </head>
 <body>
