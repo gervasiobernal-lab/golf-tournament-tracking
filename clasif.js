@@ -64,8 +64,8 @@ export function seedClasif() {
 }
 
 // ---------- Carga hoyo por hoyo ----------
-// Tarjeta del Club de Campo Mendoza (fuente: golfingrecord.com, a confirmar
-// con la tarjeta del club; el admin la puede corregir en la página).
+// Tarjeta del Club de Campo Mendoza (par y hándicap de cada hoyo confirmados
+// por el usuario el 31/10/2026; el admin la puede corregir en la página).
 export const DEFAULT_HOLES = [
   [4,11],[4,3],[5,9],[3,17],[4,15],[4,5],[5,7],[3,13],[4,1],
   [4,16],[3,14],[4,2],[5,8],[4,12],[4,4],[3,18],[4,10],[5,6]
