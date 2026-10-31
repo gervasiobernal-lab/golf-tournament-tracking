@@ -96,3 +96,25 @@ export function liveSummary(card, hcp, holes) {
     net18: thru === 18 && hasHcp ? gross - hcp : null
   };
 }
+
+// ---------- Index → hándicap de cancha ----------
+// Tee azul caballeros, Club de Campo Mendoza (cartel del club): rating 71,6 · slope 128 · par 72.
+export const DEFAULT_COURSE = { cr: 71.6, slope: 128 };
+// Hándicap de cancha (WHS) = Index × Slope / 113 + (Rating − Par), redondeado.
+// Index plus se guarda negativo (+1,5 → -1.5) y devuelve hándicap negativo (plus).
+export function courseHcp(index, course, par) {
+  const v = Math.round(index * course.slope / 113 + (course.cr - par));
+  return v === 0 ? 0 : v; // evita "-0"
+}
+// "11,7" → 11.7 · "+1,5" → -1.5 (plus) · vacío → null
+export function parseIndex(txt) {
+  const s = String(txt).trim().replace(",", ".");
+  if (s === "") return null;
+  const n = parseFloat(s.replace(/^\+/, ""));
+  if (isNaN(n) || n < 0 || n > 54) return undefined;
+  return s.startsWith("+") ? -n : n;
+}
+export const fmtIndex = n => n == null ? "" : (n < 0 ? "+" + String(-n) : String(n)).replace(".", ",");
+export const fmtHcp = n => n == null ? "?" : n < 0 ? "+" + -n : String(n);
+// Para comparar nombres de una lista pegada ("alvaro luna" = "Álvaro Luna", "gervasio" = "Gerva").
+export const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");

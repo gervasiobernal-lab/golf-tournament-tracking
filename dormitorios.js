@@ -1,6 +1,7 @@
 // dormitorios.js — Campeonato Dormitorios: ranking, fecha en vivo y carga de tarjeta.
 import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js";
-import { ranking, seedClasif, DEFAULT_HOLES, strokesOn, liveSummary } from "./clasif.js";
+import { ranking, seedClasif, DEFAULT_HOLES, strokesOn, liveSummary,
+         DEFAULT_COURSE, courseHcp, parseIndex, fmtIndex, fmtHcp, norm } from "./clasif.js";
 
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2";
 // ?demo en la dirección: guarda solo en este navegador (para probar sin tocar la base).
@@ -14,6 +15,10 @@ const ST = { admin: false, error: null, loginErr: null, busy: false, online: nav
 const UI = { tab: "rank", fecha: null, hole: 1, me: null, holesEdit: false };
 try { UI.me = localStorage.getItem("dorm-me"); } catch (e) {}
 const cur = () => DRAFT || DATA;
+const courseOf = d => ({ ...DEFAULT_COURSE, ...(d?.course || {}) });
+// Index del jugador para esa fecha (cada fecha guarda el suyo) y su hándicap de cancha.
+const indexFor = (p, f) => typeof p.index?.[f] === "number" ? p.index[f] : null;
+const hcpFor = (d, p, f) => { const i = indexFor(p, f); return i === null ? null : courseHcp(i, courseOf(d), holesOf(d).reduce((a, h) => a + h.par, 0)); };
 const holesOf = d => (Array.isArray(d?.holes) && d.holes.length === 18) ? d.holes : DEFAULT_HOLES;
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const toPar = n => n === null || n === undefined ? "–" : n === 0 ? "E" : (n > 0 ? "+" + n : String(n));
@@ -83,7 +88,7 @@ function effective(d) {
     const cards = { ...(p.cards || {}) }, prov = {};
     d.fechas.forEach(f => {
       if (typeof cards[f.id] === "number") return;
-      const s = liveSummary(LIVE[cardId(f.id, p.id)], p.hcp, holes);
+      const s = liveSummary(LIVE[cardId(f.id, p.id)], hcpFor(d, p, f.id), holes);
       if (s.net18 !== null) { cards[f.id] = s.net18; prov[f.id] = true; }
     });
     return { ...p, cards, prov };
@@ -136,14 +141,14 @@ function fechaPicker(d) {
 }
 function viewLive(d) {
   const holes = holesOf(d), f = d.fechas.find(x => x.id === UI.fecha);
-  const rows = d.players.map(p => ({ p, s: liveSummary(LIVE[cardId(UI.fecha, p.id)], p.hcp, holes) }))
+  const rows = d.players.map(p => ({ p, s: liveSummary(LIVE[cardId(UI.fecha, p.id)], hcpFor(d, p, UI.fecha), holes) }))
     .filter(r => r.s.thru > 0)
     .sort((a, b) => (a.s.netToPar ?? 999) - (b.s.netToPar ?? 999) || b.s.thru - a.s.thru || a.s.grossToPar - b.s.grossToPar);
   const waiting = d.players.filter(p => !rows.some(r => r.p.id === p.id));
   return `<h2>Fecha ${esc(f.label)} en vivo</h2>${fechaPicker(d)}
     <p class="sub">Neto respecto del par en los hoyos jugados. Se actualiza solo a medida que cada uno carga su tarjeta.</p>
     ${rows.length ? `<div class="tw"><table class="lb"><thead><tr><th></th><th style="text-align:left">Jugador</th><th>Hoyos</th><th>Gross</th><th>Neto</th></tr></thead><tbody>
-      ${rows.map((r, i) => `<tr><td class="num">${i + 1}</td><td style="text-align:left"><b>${esc(r.p.name)}</b>${typeof r.p.hcp !== "number" ? '<br><small class="tb">falta hcp</small>' : ""}</td>
+      ${rows.map((r, i) => `<tr><td class="num">${i + 1}</td><td style="text-align:left"><b>${esc(r.p.name)}</b>${hcpFor(d, r.p, UI.fecha) === null ? '<br><small class="tb">falta index</small>' : `<br><small>hcp ${fmtHcp(hcpFor(d, r.p, UI.fecha))}</small>`}</td>
         <td class="num">${r.s.thru === 18 ? "F" : r.s.thru}</td><td class="num">${r.s.gross} <small>(${toPar(r.s.grossToPar)})</small></td>
         <td class="num big ${r.s.netToPar < 0 ? "under" : ""}">${toPar(r.s.netToPar)}${r.s.net18 !== null ? ` <small>(${r.s.net18})</small>` : ""}</td></tr>`).join("")}
     </tbody></table></div>
@@ -158,11 +163,12 @@ function viewCard(d) {
     <div class="panel"><div class="field"><label for="me">¿Quién sos?</label><select id="me" data-act="me">${opts}</select></div>${fechaPicker(d)}</div>`;
   const p = d.players.find(x => x.id === UI.me);
   if (!p) return h;
-  const card = LIVE[cardId(UI.fecha, p.id)] || {}, s = liveSummary(card, p.hcp, holes);
-  const hole = holes[UI.hole - 1], g = card["h" + UI.hole], k = typeof p.hcp === "number" ? strokesOn(p.hcp, hole.si) : 0;
+  const hcp = hcpFor(d, p, UI.fecha), idx = indexFor(p, UI.fecha);
+  const card = LIVE[cardId(UI.fecha, p.id)] || {}, s = liveSummary(card, hcp, holes);
+  const hole = holes[UI.hole - 1], g = card["h" + UI.hole], k = hcp !== null ? strokesOn(hcp, hole.si) : 0;
   h += `<div class="mysum"><span><small>Hoyos</small><b class="num">${s.thru}</b></span><span><small>Gross</small><b class="num">${s.gross || "–"}</b></span>
-      <span><small>Neto vs par</small><b class="num">${toPar(s.netToPar)}</b></span><span><small>Hcp</small><b class="num">${p.hcp ?? "?"}</b></span></div>
-    ${typeof p.hcp !== "number" ? `<p class="note warn">Falta tu hándicap: el admin lo carga en la tabla de abajo de Ranking. Igual podés ir cargando los golpes.</p>` : ""}
+      <span><small>Neto vs par</small><b class="num">${toPar(s.netToPar)}</b></span><span><small>Hcp${idx !== null ? ` (ix ${fmtIndex(idx)})` : ""}</small><b class="num">${fmtHcp(hcp)}</b></span></div>
+    ${hcp === null ? `<p class="note warn">Falta tu index de esta fecha: lo carga el admin en Ranking. Igual podés ir cargando los golpes.</p>` : ""}
     <div class="holes">${holes.map((x, i) => { const v = card["h" + (i + 1)];
       return `<button class="num ${typeof v === "number" ? "wh" : ""} ${i + 1 === UI.hole ? "cur" : ""}" data-act="hole" data-n="${i + 1}" aria-label="Hoyo ${i + 1}">${i + 1}</button>`; }).join("")}</div>
     <div class="hcard"><div class="hhead"><span class="hn num">${UI.hole}</span>
@@ -190,13 +196,18 @@ function viewAdmin(d) {
     <button class="btn primary" data-act="seed">Crear clasificación</button></div>`;
   const rk = ranking(d.players, d.fechas), holes = holesOf(d);
   return `<h2>Administrador</h2>
-    <p class="sub">Neto oficial de cada fecha (vacío = no jugó o todavía no se confirmó) y hándicap de juego de cada uno. Se guarda con el botón de abajo.</p>
-    <div class="tw"><table class="edit"><thead><tr><th style="text-align:left">Jugador</th><th>Hcp</th>
+    <p class="sub">Index de cada jugador para la fecha elegida (cada fecha guarda el suyo, cambiarlo en una no toca las otras) y neto oficial de cada fecha (vacío = no jugó o falta confirmar). Se guarda con el botón de abajo.</p>
+    ${fechaPicker(d)}
+    <details class="panel paste"><summary>Pegar lista de index para la fecha ${esc(d.fechas.find(f => f.id === UI.fecha).label)}</summary>
+      <p class="note">Un jugador por renglón, por ejemplo <i>Ramiro 11.7</i>. Plus con "+" adelante.</p>
+      <textarea id="pastebox" rows="6" placeholder="Ramiro 11.7&#10;Esteban 19,4"></textarea>
+      <button class="btn sm primary" data-act="pasteidx">Aplicar</button></details>
+    <div class="tw"><table class="edit"><thead><tr><th style="text-align:left">Jugador</th><th>Index ${esc(d.fechas.find(f => f.id === UI.fecha).label)}<br><small>hcp</small></th>
       ${d.fechas.map((f, i) => `<th><input id="fl${i}" class="flabel" data-act="flabel" data-i="${i}" value="${esc(f.label)}" aria-label="Fecha ${i + 1}"></th>`).join("")}
       <th>Sorteo</th></tr></thead><tbody>
       ${d.players.map(p => `<tr><td style="text-align:left"><input id="pn${p.id}" class="pname" data-act="pname" data-id="${p.id}" value="${esc(p.name)}" aria-label="Nombre"></td>
-        <td><input id="hc${p.id}" inputmode="numeric" data-act="hcp" data-id="${p.id}" value="${p.hcp ?? ""}" aria-label="Hándicap ${esc(p.name)}"></td>
-        ${d.fechas.map(f => { const s = liveSummary(LIVE[cardId(f.id, p.id)], p.hcp, holes);
+        <td><input id="ix${p.id}" inputmode="decimal" data-act="index" data-id="${p.id}" value="${fmtIndex(indexFor(p, UI.fecha))}" aria-label="Index ${esc(p.name)}"><br><small class="num">${hcpFor(d, p, UI.fecha) === null ? "" : fmtHcp(hcpFor(d, p, UI.fecha))}</small></td>
+        ${d.fechas.map(f => { const s = liveSummary(LIVE[cardId(f.id, p.id)], hcpFor(d, p, f.id), holes);
           return `<td><input id="s${p.id}${f.id}" inputmode="numeric" data-act="score" data-id="${p.id}" data-f="${f.id}" value="${p.cards?.[f.id] ?? ""}" placeholder="${s.net18 ?? ""}" aria-label="${esc(p.name)} ${esc(f.label)}"></td>`; }).join("")}
         <td><input id="so${p.id}" inputmode="numeric" data-act="sorteo" data-id="${p.id}" value="${p.sorteo ?? ""}" aria-label="Sorteo ${esc(p.name)}" ${rk.find(r => r.id === p.id)?.tie || p.sorteo != null ? "" : "disabled"}></td></tr>`).join("")}
     </tbody></table></div>
@@ -205,7 +216,9 @@ function viewAdmin(d) {
     ${UI.holesEdit ? `<div class="tw"><table class="edit"><thead><tr><th>Hoyo</th><th>Par</th><th>Hcp</th></tr></thead><tbody>
       ${holes.map((h, i) => `<tr><td><b class="num">${i + 1}</b></td><td><input id="hp${i}" inputmode="numeric" data-act="hpar" data-i="${i}" value="${h.par}"></td>
         <td><input id="hs${i}" inputmode="numeric" data-act="hsi" data-i="${i}" value="${h.si}"></td></tr>`).join("")}
-      <tr class="tot"><td>Total</td><td class="num">${holes.reduce((a, h) => a + h.par, 0)}</td><td></td></tr></tbody></table></div>` : ""}
+      <tr class="tot"><td>Total</td><td class="num">${holes.reduce((a, h) => a + h.par, 0)}</td><td></td></tr></tbody></table></div>
+      <div class="grid2" style="margin-top:8px"><div class="field"><label for="ccr">Calificación (rating)</label><input id="ccr" inputmode="decimal" data-act="ccr" value="${courseOf(d).cr}"></div>
+      <div class="field"><label for="csl">Slope</label><input id="csl" inputmode="numeric" data-act="csl" value="${courseOf(d).slope}"></div></div>` : ""}
     <button class="btn" data-act="logout" style="margin-top:16px;width:100%">Salir de administrador</button>`;
 }
 function render() {
@@ -246,6 +259,7 @@ document.addEventListener("click", async e => {
     setHole(UI.fecha, UI.me, UI.hole, v);
   }
   else if (a === "clearhole") setHole(UI.fecha, UI.me, UI.hole, null);
+  else if (a === "pasteidx") applyPaste();
   else if (a === "seed") DRAFT = seedClasif();
   else if (a === "discard") DRAFT = null;
   else if (a === "dismiss") ST.error = null;
@@ -257,6 +271,23 @@ document.addEventListener("click", async e => {
   } else return;
   render();
 });
+// "Ramiro 11.7" por renglón → index de la fecha elegida. Reconoce nombres sin tildes y abreviados.
+function applyPaste() {
+  const txt = document.getElementById("pastebox")?.value || "";
+  if (!DRAFT) DRAFT = structuredClone(DATA);
+  const ok = [], miss = [];
+  txt.split(/\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+    const m = line.match(/^(.*?)[\s:=-]+(\+?\d+(?:[.,]\d+)?)\s*$/);
+    if (!m) { miss.push(line); return; }
+    const name = norm(m[1]), ix = parseIndex(m[2]);
+    const p = DRAFT.players.find(q => norm(q.name) === name) ||
+              DRAFT.players.find(q => norm(q.name).startsWith(name) || name.startsWith(norm(q.name))) ||
+              DRAFT.players.find(q => norm(q.name).split(" ").some(w => w.length > 2 && name.split(" ").includes(w)) && norm(q.name).split(" ").length === 1);
+    if (!p || ix == null) { miss.push(line); return; }
+    p.index = p.index || {}; p.index[UI.fecha] = ix; ok.push(p.name);
+  });
+  ST.error = miss.length ? `Cargados ${ok.length}. No reconocí: ${miss.join(" · ")}` : null;
+}
 function firstEmptyHole(d) {
   const c = LIVE[cardId(UI.fecha, UI.me)] || {};
   const i = holesOf(d).findIndex((_, k) => typeof c["h" + (k + 1)] !== "number");
@@ -277,7 +308,13 @@ document.addEventListener("change", e => {
     else if (n >= 40 && n <= 140) p.cards[el.dataset.f] = n;
     else ST.error = `"${v}" no parece un score neto válido.`;
   }
-  else if (a === "hcp") { if (v === "") delete p.hcp; else if (!isNaN(n) && n >= -10 && n <= 54) p.hcp = n; else ST.error = `"${v}" no parece un hándicap válido.`; }
+  else if (a === "index") {
+    const ix = parseIndex(v);
+    p.index = p.index || {};
+    if (ix === null) delete p.index[UI.fecha]; else if (ix !== undefined) p.index[UI.fecha] = ix; else ST.error = `"${v}" no parece un index válido.`;
+  }
+  else if (a === "ccr") { const x = parseFloat(v.replace(",", ".")); if (x > 50 && x < 85) DRAFT.course = { ...courseOf(DRAFT), cr: x }; }
+  else if (a === "csl") { if (n >= 55 && n <= 155) DRAFT.course = { ...courseOf(DRAFT), slope: n }; }
   else if (a === "sorteo") { if (v === "") delete p.sorteo; else if (n > 0) p.sorteo = n; }
   else if (a === "pname") p.name = v || p.name;
   else if (a === "flabel") DRAFT.fechas[+el.dataset.i].label = v || DRAFT.fechas[+el.dataset.i].label;
