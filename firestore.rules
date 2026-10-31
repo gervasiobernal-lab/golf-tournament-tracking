@@ -17,6 +17,12 @@ service cloud.firestore {
       allow write: if esAdmin();
     }
 
+    // Clasificación "Campeonato Dormitorios": todos la leen, solo el admin la carga.
+    match /torneo/clasificacion {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
     // Golpes de cada partido: todos leen; escribe quien abrió la app
     // (sesión anónima automática). Se limita el tamaño del documento.
     match /scores/{matchId} {
