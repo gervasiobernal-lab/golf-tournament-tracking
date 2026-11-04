@@ -3,6 +3,7 @@ import { COURSES, FORMATS, holeList, courseHcp, strokesOn, matchState, totals,
          defaultMatches, seedConfig, half, totalPoints, pointsOf, medalBoard, medalTotal, hasOwnBall } from "./golf.js";
 import * as data from "./data.js";
 import { AWARDS, computeAwards } from "./premios.js";
+import { extraId, challengeBoard, parseHoles, snapshotFor, alertsBetween, wrapped, scoreName } from "./extras.js";
 
 // ---------- Estado ----------
 let CFG = null;        // configuración guardada (jugadores, días, partidos)
@@ -10,7 +11,7 @@ let DRAFT = null;      // copia en edición del admin, hasta que toque "Guardar"
 let SCORES = {};       // golpes cargados: { idPartido: { h1: { clave: gross } } }
 let ST = {};           // estado de conexión / usuario
 let LOADED = false;
-const UI = { premSes: "all", medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
+const UI = { wrap: null, toasts: [], premSes: "all", medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
 const cfg = () => DRAFT || CFG;
 
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -24,6 +25,13 @@ const st = m => matchState(cfg(), m, SCORES[m.id]);
 function getPin(id) { try { return localStorage.getItem("ryder-pin-" + id); } catch (e) { return null; } }
 function setPin(id, v) { try { localStorage.setItem("ryder-pin-" + id, v); } catch (e) {} }
 const canScore = m => ST.admin || getPin(m.id) === m.pin;
+
+// "¿Quién sos?": se guarda en este celular. "none" = solo mira.
+let ME = null;
+try { ME = localStorage.getItem("ryder-me"); } catch (e) {}
+const setMe = v => { ME = v; try { localStorage.setItem("ryder-me", v); } catch (e) {} };
+const myId = () => (ME && ME !== "none" && cfg()?.players.some(p => p.id === ME)) ? ME : null;
+const isMine = m => !!myId() && (m.a.includes(myId()) || m.b.includes(myId()));
 
 function edit(fn) { if (!DRAFT) DRAFT = structuredClone(CFG); fn(DRAFT); render(); }
 
@@ -57,14 +65,14 @@ function matchRow(m) {
   const sub = s.closed ? "final" : s.matchClosed ? "four-ball final" : s.played ? `tras ${s.played}` : "";
   const md = s.duels.length && s.duels.some(d => d.played > 0)
     ? `<small>indiv. ${half(s.duels.reduce((x, d) => x + d.proj[0], 0)) || 0}–${half(s.duels.reduce((x, d) => x + d.proj[1], 0)) || 0}</small>` : "";
-  return `<button class="mrow" data-act="open" data-id="${m.id}">
+  return `<button class="mrow ${isMine(m) ? "mine" : ""}" data-act="open" data-id="${m.id}">
     <span class="side ta">${sideNames(m.a)}</span>
     <span class="pill num ${s.played ? cls : ""} ${s.closed ? "fin" : ""}">${s.text}${sub ? `<small>${sub}</small>` : ""}${md}</span>
     <span class="side b tb">${sideNames(m.b)}</span></button>`;
 }
 function viewBoard() {
   if (!cfg()) return `<div class="empty"><h2>Torneo sin configurar</h2><p>El administrador tiene que entrar en Configuración y crear el torneo.</p></div>`;
-  let h = scoreboard();
+  let h = scoreboard() + myCard();
   cfg().sessions.forEach(se => {
     const ms = cfg().matches.filter(m => m.session === se.id);
     const p = ms.reduce((a, m) => { const s = st(m); return [a[0] + s.pts[0], a[1] + s.pts[1]]; }, [0, 0]);
@@ -73,6 +81,21 @@ function viewBoard() {
       <div class="list">${ms.map(matchRow).join("")}</div>`;
   });
   return h;
+}
+
+// Tarjeta "Tu partido": el que está en juego, si no el próximo, si no el último.
+function myCard() {
+  const id = myId();
+  if (!id) return ME === "none" ? "" : `<div class="mecard"><p>¿Quién sos? Elegí tu nombre y te mostramos tu partido y te avisamos cómo viene.</p>
+    <button class="btn sm primary" data-act="whoami">Elegir</button></div>`;
+  const mine = cfg().matches.filter(isMine);
+  const live = mine.find(m => { const s = st(m); return s.played > 0 && !s.closed; });
+  const next = mine.find(m => st(m).played === 0);
+  const m = live || next || mine[mine.length - 1];
+  return `<div class="mecard"><div class="mehead"><span>Hola <b>${esc(pl(id).name)}</b> · ${live ? "tu partido en juego" : next ? "tu próximo partido" : "tu último partido"}${m ? ` (${esc(sesOf(m).label)})` : ""}</span>
+      <button class="link" data-act="whoami">Cambiar</button></div>
+    ${m ? matchRow(m) : ""}
+    <button class="btn sm wrapbtn" data-act="wrap" data-v="${id}">Tu Ryder Wrapped ✨</button></div>`;
 }
 
 // ---------- Partido ----------
@@ -110,10 +133,27 @@ function viewMatch() {
   });
   const r = s.res[UI.hole - 1];
   h += `<div class="verdict ${r === "A" || r === "B" ? r : ""}">${r === null ? "Falta cargar el gross de todos" : r === "H" ? "Hoyo empatado" : `Hoyo para ${esc(teamName(r))}`}</div></div>
+    ${challengePanel(m, se, hole.n, can)}
     <div class="nav2"><button class="btn" data-act="hole" data-n="${UI.hole - 1}" ${UI.hole === 1 ? "disabled" : ""}>‹ Hoyo ${Math.max(1, UI.hole - 1)}</button>
       <button class="btn primary" data-act="hole" data-n="${UI.hole + 1}" ${UI.hole === 18 ? "disabled" : ""}>Hoyo ${Math.min(18, UI.hole + 1)} ›</button></div>
     <p class="banner">● = golpe recibido en el hoyo. Hándicap de juego: ${s.us.map(u => `${u.pids.map(id => esc(pl(id).name)).join("/")} ${u.hcp}`).join(" · ")}</p>`;
   return h + adminMatchTools(m);
+}
+// Panel para anotar el long drive o el closest del grupo en ese hoyo.
+function challengePanel(m, se, n, can) {
+  const types = [["ld", "Long drive 🏌️", "Distancia aprox. (m)"], ["ctp", "Closest to the pin 🎯", "Distancia a la bandera (m)"]]
+    .filter(([t]) => (se[t] || []).includes(n));
+  if (!types.length) return "";
+  const ex = SCORES[extraId(m.id)] || {}, ids = [...m.a, ...m.b];
+  return types.map(([t, title, lab]) => {
+    const e = ex[t + n] || {}, best = challengeBoard(cfg(), SCORES, se.id, t, n)[0];
+    return `<div class="chal"><div class="chead"><b>${title}</b><small>hoyo ${n}</small></div>
+      <div class="grid2"><div class="field"><label for="cp${t}${n}">Mejor del grupo</label>
+        <select id="cp${t}${n}" data-act="chalp" data-t="${t}" data-n="${n}" ${can ? "" : "disabled"}><option value="">${t === "ctp" ? "Nadie en green" : "Sin cargar"}</option>
+          ${ids.map(id => `<option value="${id}" ${e.pid === id ? "selected" : ""}>${esc(pl(id).name)}</option>`).join("")}</select></div>
+      <div class="field"><label for="cd${t}${n}">${lab}</label><input id="cd${t}${n}" inputmode="decimal" data-act="chald" data-t="${t}" data-n="${n}" value="${typeof e.d === "number" ? String(e.d).replace(".", ",") : ""}" ${can && e.pid ? "" : "disabled"}></div></div>
+      ${best ? `<p class="note">Va ganando el día: <b>${esc(best.p.name)}</b>${best.d !== null ? ` · ${String(best.d).replace(".", ",")} m` : ""}</p>` : ""}</div>`;
+  }).join("");
 }
 function duelsPanel(s) {
   return `<div class="medal"><div class="mhead">Matches individuales <small>(${half(s.duels[0].val)} pto c/u · 100% de la diferencia)</small></div>${s.duels.map(d => {
@@ -200,15 +240,25 @@ function viewPremios() {
       <p class="note">${a.desc}</p>
       ${rest.length ? `<p class="arest">Lo siguen: ${rest.map(r => `${esc(r.p.name)} (${unit[a.key](r.val)})`).join(" · ")}</p>` : ""}</div></div>`;
   }).join("");
+  const chal = ids.flatMap(sid => { const se = c.sessions.find(x => x.id === sid);
+    return [["ld", "Long drive", "🏌️"], ["ctp", "Closest to the pin", "🎯"]].flatMap(([t, name, icon]) => (se[t] || []).map(n => {
+      const rows = challengeBoard(c, SCORES, sid, t, n);
+      return `<div class="award ${rows.length ? "" : "empty"}"><div class="aicon">${icon}</div><div class="abody"><h3>${name}</h3>
+        <p class="asub">${esc(se.label)} · hoyo ${n}</p>
+        ${rows.length ? `<ol class="clist">${rows.map(r => `<li><b class="${r.p.team === "A" ? "ta" : "tb"}">${esc(r.p.name)}</b>${r.d !== null ? ` <span class="num">${String(r.d).replace(".", ",")} m</span>` : ""}</li>`).join("")}</ol>` : `<p class="awin muted">Sin cargar todavía</p>`}
+      </div></div>`; })); }).join("");
   return `<h2>Premios</h2><p class="sub">Se calculan solos con los golpes que cargan los anotadores y se actualizan en vivo.</p>${picker}
-    <div class="awards">${cards}</div>`;
+    <div class="awards">${cards}</div>
+    ${chal ? `<h2>Long drive y closest</h2><p class="sub">Cada anotador carga el mejor de su grupo en el hoyo elegido. Gana la mayor distancia (long drive) o la menor (closest).</p><div class="awards">${chal}</div>` : ""}`;
 }
 
 // ---------- Jugadores ----------
 function viewPlayers() {
   if (!cfg()) return viewBoard();
   const a = ST.admin;
-  let h = `<h2>Jugadores</h2><p class="sub">Índice y hándicap de cancha de cada día (con el rating y slope cargados).${a ? " Los cambios se guardan con el botón de abajo." : ""}</p>`;
+  let h = `<h2>Ryder Wrapped ✨</h2><p class="sub">El resumen del torneo de cada uno, listo para capturar y mandar al grupo.</p>
+    <div class="chips">${cfg().players.map(p => `<button data-act="wrap" data-v="${p.id}" class="${p.team === "A" ? "ta" : "tb"}">${esc(p.name)}</button>`).join("")}</div>
+    <h2>Jugadores</h2><p class="sub">Índice y hándicap de cancha de cada día (con el rating y slope cargados).${a ? " Los cambios se guardan con el botón de abajo." : ""}</p>`;
   ["A", "B"].forEach(side => {
     h += `<div class="panel">${a
         ? `<div class="field"><label for="tn${side}">Equipo</label><input id="tn${side}" data-act="tname" data-side="${side}" value="${esc(teamName(side))}"></div>`
@@ -268,6 +318,8 @@ function viewSettings() {
         <div class="field"><label for="pp${se.id}">Puntos por cada individual</label><select id="pp${se.id}" data-act="sdpts" data-id="${se.id}">${opt([["0.5", "½ punto (3 por salida)"], ["1", "1 punto (5 por salida)"]], String(se.duelPts ?? 0.5))}</select></div>
         <p class="note">Cada jugador juega un individual contra cada rival (4 por salida). ${half(pointsOf(c, ms[0] || { session: se.id, a: [1, 2], b: [1, 2] }))} puntos por salida.</p>` : ""}
       ${!f.team ? `<div class="field"><label for="pc${se.id}">% del hándicap${f.duels ? " en el four-ball" : ""}</label><input id="pc${se.id}" inputmode="numeric" data-act="spct" data-id="${se.id}" value="${se.pct ?? f.defPct}" class="num"></div>` : ""}
+      <div class="grid2"><div class="field"><label for="ld${se.id}">Hoyos de long drive</label><input id="ld${se.id}" data-act="sld" data-id="${se.id}" value="${(se.ld || []).join(", ")}" placeholder="ej. 7, 15"></div>
+        <div class="field"><label for="ct${se.id}">Hoyos de closest</label><input id="ct${se.id}" data-act="sctp" data-id="${se.id}" value="${(se.ctp || []).join(", ")}" placeholder="ej. 4, 16"></div></div>
       <label class="check"><input type="checkbox" id="ok${se.id}" data-act="sconf" data-id="${se.id}" ${se.confirmed ? "checked" : ""}> Rating, slope y tarjeta confirmados con el club</label>
       ${!se.confirmed ? `<p class="note warn"><span class="chip warn">A confirmar</span> Mientras no esté confirmado, el hándicap y el stroke index son provisorios.</p>` : ""}
       <button class="btn sm" data-act="cardedit" data-id="${se.id}">${UI.cardEdit === se.id ? "Cerrar tarjeta" : "Editar tarjeta (par y stroke index)"}</button>
@@ -297,13 +349,69 @@ function cardEditor(se) {
 function render() {
   const app = document.getElementById("app");
   if (!LOADED) { app.innerHTML = `<div class="empty">Cargando…</div>`; return; }
-  app.innerHTML = UI.view === "match" ? viewMatch() : UI.view === "medal" ? viewMedal() : UI.view === "premios" ? viewPremios() : UI.view === "players" ? viewPlayers() : UI.view === "settings" ? viewSettings() : viewBoard();
-  const tab = UI.view === "match" ? "board" : UI.view;
+  app.innerHTML = UI.view === "wrap" ? viewWrapped() : UI.view === "match" ? viewMatch() : UI.view === "medal" ? viewMedal() : UI.view === "premios" ? viewPremios() : UI.view === "players" ? viewPlayers() : UI.view === "settings" ? viewSettings() : viewBoard();
+  const tab = UI.view === "match" ? "board" : UI.view === "wrap" ? "players" : UI.view;
+  const ov = document.getElementById("overlay");
+  // Aparece sola la primera vez, solo en el Tablero (no tapa la configuración del admin).
+  ov.innerHTML = (UI.who || (ME === null && CFG && UI.view === "board")) ? whoSheet() : "";
+  document.getElementById("toasts").innerHTML = UI.toasts.map(t => `<div class="ping" role="status">${esc(t.msg)}</div>`).join("");
   document.getElementById("bottom").innerHTML =
     (ST.error ? `<div class="toast"><span>${esc(ST.error)}</span><button class="btn sm" data-act="dismiss">OK</button></div>` : "") +
     (DRAFT ? `<div class="savebar"><span>Cambios sin guardar</span><button class="btn sm" data-act="discard">Descartar</button><button class="btn sm primary" data-act="save">Guardar</button></div>` : "") +
     `<nav class="tabs">${[["board", "Tablero"], ["medal", "Medal"], ["premios", "Premios"], ["players", "Jugadores"], ["settings", "Config."]]
       .map(([v, l]) => `<button data-act="tab" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>`;
+}
+
+// ---------- ¿Quién sos? ----------
+function whoSheet() {
+  const btn = p => `<button class="who ${p.team === "A" ? "ta" : "tb"}" data-act="iam" data-v="${p.id}" aria-pressed="${ME === p.id}">${esc(p.name)}</button>`;
+  return `<div class="sheetbg"><div class="sheet" role="dialog" aria-label="¿Quién sos?"><h2>¿Quién sos?</h2>
+    <p class="sub">Te mostramos tu partido arriba de todo y te avisamos cuando pase algo. Queda guardado en este celular.</p>
+    ${["A", "B"].map(sd => `<h3 class="${sd === "A" ? "ta" : "tb"}">${esc(teamName(sd))}</h3><div class="whogrid">${cfg().players.filter(p => p.team === sd).map(btn).join("")}</div>`).join("")}
+    <button class="btn" data-act="iam" data-v="none" style="width:100%;margin-top:12px">Solo estoy mirando</button></div></div>`;
+}
+
+// ---------- Ryder Wrapped ----------
+function viewWrapped() {
+  const c = cfg(), ids = c.players.map(p => p.id), i = Math.max(0, ids.indexOf(UI.wrap));
+  const w = wrapped(c, SCORES, ids[i]), team = w.p.team, tn = teamName(team);
+  const tp = n => n === 0 ? "E" : n > 0 ? "+" + n : String(n);
+  const best = w.best ? `${scoreName(w.best.toPar)} en el ${w.best.hole}` : "—";
+  return `<div class="wrapnav"><button class="btn sm" data-act="tab" data-v="players">‹ Volver</button>
+      <span><button class="btn sm" data-act="wrap" data-v="${ids[(i - 1 + ids.length) % ids.length]}" aria-label="Anterior">‹</button>
+      <button class="btn sm" data-act="wrap" data-v="${ids[(i + 1) % ids.length]}" aria-label="Siguiente">›</button></span></div>
+    <article class="wrapped t${team}">
+      <p class="wkick">${esc(c.title)} · Wrapped</p>
+      <h1 class="wname">${esc(w.p.name)}</h1>
+      <p class="wteam">${esc(tn)} · ${esc(w.title)}</p>
+      <div class="wbig"><b class="num">${half(w.points) || 0}</b><span>punto${w.points === 1 ? "" : "s"} para ${esc(tn)}</span>
+        <small class="num">${w.won} ganado${w.won === 1 ? "" : "s"} · ${w.halved} empatado${w.halved === 1 ? "" : "s"} · ${w.lost} perdido${w.lost === 1 ? "" : "s"}</small></div>
+      <div class="wgrid">
+        <div><small>Tu mejor hoyo</small><b>${best}</b>${w.best ? `<span>${w.best.gross} golpes en un par ${w.best.par} · ${esc(w.best.where)}</span>` : "<span>Todavía sin hoyos</span>"}</div>
+        <div><small>Racha de pares o mejor</small><b class="num">${w.streak}</b><span>hoyo${w.streak === 1 ? "" : "s"} seguidos</span></div>
+        <div><small>Golpes que te regalaron</small><b class="num">${w.gifts}</b><span>${w.giftsDetail.length ? w.giftsDetail.map(g => `${g.n} en ${esc(g.what)}`).join(" · ") : "ni uno: jugaste sin ventaja"}</span></div>
+        <div><small>Birdies netos</small><b class="num">${w.birdiesNet}</b><span>${w.parsOrBetter} hoyos en par o mejor de ${w.holes}</span></div>
+      </div>
+      <div class="wbeat"><small>A quién le ganaste</small>
+        <p>${w.beatenList.length ? w.beatenList.map(b => `${esc(b.name)}${b.n > 1 ? ` ×${b.n}` : ""}`).join(" · ") : "A nadie… todavía 😅"}</p></div>
+      <p class="wfoot">Ryder Santo Domingo · Chile 2026</p>
+    </article>
+    <p class="banner">Sacale una captura y mandala al grupo 📸</p>`;
+}
+
+// Avisos: comparamos el estado de tus partidos antes y después de cada actualización.
+let SNAP = null;
+function checkAlerts() {
+  const id = myId(); if (!id || !cfg()) { SNAP = null; return; }
+  const next = snapshotFor(cfg(), SCORES, id);
+  if (SNAP) alertsBetween(SNAP, next, cfg()).forEach(pushToast);
+  SNAP = next;
+}
+function pushToast(msg) {
+  const t = { msg, id: Math.random() };
+  UI.toasts = [...UI.toasts, t].slice(-3);
+  try { navigator.vibrate?.(80); } catch (e) {}
+  setTimeout(() => { UI.toasts = UI.toasts.filter(x => x !== t); softRender(); }, 7000);
 }
 
 // ---------- Eventos ----------
@@ -319,6 +427,9 @@ document.addEventListener("click", e => {
   else if (a === "mtab") UI.mtab = b.dataset.v;
   else if (a === "mses") UI.medalSes = b.dataset.v;
   else if (a === "pses") UI.premSes = b.dataset.v;
+  else if (a === "whoami") UI.who = true;
+  else if (a === "iam") { setMe(b.dataset.v); UI.who = false; SNAP = null; checkAlerts(); }
+  else if (a === "wrap") { UI.view = "wrap"; UI.wrap = b.dataset.v; scrollTo(0, 0); }
   else if (a === "hole") UI.hole = Math.max(1, Math.min(18, +b.dataset.n));
   else if (a === "unlock") {
     const m = cfg().matches.find(x => x.id === UI.match), v = document.getElementById("pin-input").value.trim();
@@ -379,7 +490,18 @@ document.addEventListener("submit", async e => {
 });
 
 document.addEventListener("change", e => {
-  const el = e.target, a = el.dataset.act; if (!a || !ST.admin) return;
+  const el = e.target, a = el.dataset.act; if (!a) return;
+  if (a === "chalp" || a === "chald") {
+    const m = cfg().matches.find(x => x.id === UI.match); if (!m || !canScore(m)) return;
+    const field = el.dataset.t + el.dataset.n, cur = (SCORES[extraId(m.id)] || {})[field] || {};
+    let v;
+    if (a === "chalp") v = el.value ? { pid: el.value, ...(typeof cur.d === "number" ? { d: cur.d } : {}) } : null;
+    else { const d = parseFloat(el.value.replace(",", ".")); v = cur.pid ? { pid: cur.pid, ...(d > 0 && d < 500 ? { d } : {}) } : null; }
+    const x = SCORES[extraId(m.id)] = { ...(SCORES[extraId(m.id)] || {}) };
+    if (v === null) delete x[field]; else x[field] = v;
+    data.setExtra(extraId(m.id), field, v); render(); return;
+  }
+  if (!ST.admin) return;
   const num = v => parseFloat(String(v).replace(",", "."));
   edit(d => {
     const se = d.sessions.find(x => x.id === el.dataset.id);
@@ -399,6 +521,8 @@ document.addEventListener("change", e => {
     else if (a === "scr") { const v = num(el.value); if (v > 50 && v < 85) se.cr = v; }
     else if (a === "ssl") { const v = parseInt(el.value); if (v >= 55 && v <= 155) se.slope = v; }
     else if (a === "sdpts") se.duelPts = parseFloat(el.value);
+    else if (a === "sld") se.ld = parseHoles(el.value);
+    else if (a === "sctp") se.ctp = parseHoles(el.value);
     else if (a === "sdpct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.duelPct = v; }
     else if (a === "spct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.pct = v; }
     else if (a === "sconf") se.confirmed = el.checked;
@@ -428,8 +552,8 @@ document.addEventListener("focusout", () => { if (pendingRender) { pendingRender
 
 render();
 data.start({
-  onConfig: c => { CFG = c; LOADED = true; softRender(); },
-  onScores: s => { SCORES = s; softRender(); },
+  onConfig: c => { CFG = c; LOADED = true; checkAlerts(); softRender(); },
+  onScores: s => { SCORES = s; checkAlerts(); softRender(); },
   onStatus: s => { ST = { ...ST, ...s }; softRender(); }
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

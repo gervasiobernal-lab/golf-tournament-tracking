@@ -69,6 +69,13 @@ export function setScore(matchId, hole, key, value) {
     .catch(e => emitStatus({ error: "No se guardó el golpe: " + e.code }));
 }
 
+// Long drive / closest: documento "x-<partido>", campo "ld7" o "ctp4" = { pid, d }.
+export function setExtra(docId, field, value) {
+  if (!isConfigured) return demoSetExtra(docId, field, value);
+  F.setDoc(F.doc(db, "scores", docId), { [field]: value === null ? F.deleteField() : value }, { merge: true })
+    .catch(e => emitStatus({ error: "No se guardó: " + e.code }));
+}
+
 export function clearMatch(matchId) {
   if (!isConfigured) return demoClear(matchId);
   F.setDoc(F.doc(db, "scores", matchId), {})
@@ -103,6 +110,11 @@ function demoSetScore(m, h, k, v) {
   const s = demo.scores[m] = demo.scores[m] || {};
   const hk = s["h" + h] = s["h" + h] || {};
   if (v === null) delete hk[k]; else hk[k] = v;
+  demoSave();
+}
+function demoSetExtra(id, field, v) {
+  const d = demo.scores[id] = demo.scores[id] || {};
+  if (v === null) delete d[field]; else d[field] = v;
   demoSave();
 }
 function demoClear(m) { delete demo.scores[m]; demoSave(); }
