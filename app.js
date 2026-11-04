@@ -1,6 +1,6 @@
 // app.js — Interfaz de la app. Dibuja las pantallas y responde a los toques.
 import { COURSES, FORMATS, holeList, courseHcp, strokesOn, matchState, totals,
-         defaultMatches, seedConfig, half, totalPoints, pointsOf } from "./golf.js";
+         defaultMatches, seedConfig, half, totalPoints, pointsOf, medalBoard, medalTotal, hasOwnBall } from "./golf.js";
 import * as data from "./data.js";
 
 // ---------- Estado ----------
@@ -9,7 +9,7 @@ let DRAFT = null;      // copia en edición del admin, hasta que toque "Guardar"
 let SCORES = {};       // golpes cargados: { idPartido: { h1: { clave: gross } } }
 let ST = {};           // estado de conexión / usuario
 let LOADED = false;
-const UI = { view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
+const UI = { medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
 const cfg = () => DRAFT || CFG;
 
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -145,6 +145,38 @@ function cardTable(m, s) {
   return h + `<tr class="tot"><td colspan="3">Total</td>${s.us.map((u, k) => `<td class="num">${cnt[k] ? tot[k] : ""}</td>`).join("")}<td class="r">${s.text}</td></tr></tbody></table></div>`;
 }
 
+// ---------- Ranking medal ----------
+function viewMedal() {
+  if (!cfg()) return viewBoard();
+  const c = cfg(), tp = n => n === 0 ? "E" : n > 0 ? "+" + n : String(n);
+  if (!UI.medalSes) {   // por defecto: el último día con golpes cargados
+    const withData = c.sessions.filter(se => hasOwnBall(se) && medalBoard(c, SCORES, se.id).length);
+    UI.medalSes = withData.length ? withData[withData.length - 1].id : "total";
+  }
+  const picker = `<div class="chips">${c.sessions.map(se => `<button data-act="mses" data-v="${se.id}" aria-pressed="${UI.medalSes === se.id}">${esc(se.label)}</button>`).join("")}
+    <button data-act="mses" data-v="total" aria-pressed="${UI.medalSes === "total"}">Acumulado</button></div>`;
+  let h = `<h2>Ranking medal</h2><p class="sub">Neto individual con el 100% del hándicap de cancha, con el gross que cargan los anotadores. Cuentan los días con pelota propia (four-ball y singles).</p>${picker}`;
+  const teamCls = p => p.team === "A" ? "ta" : "tb";
+  if (UI.medalSes === "total") {
+    const rows = medalTotal(c, SCORES);
+    const days = c.sessions.filter(hasOwnBall).length;
+    if (!rows.length) return h + `<div class="panel"><p class="note">Todavía no hay golpes cargados.</p></div>`;
+    return h + `<div class="tw"><table class="lb"><thead><tr><th></th><th style="text-align:left">Jugador</th><th>Hoyos</th><th>Vueltas</th><th>Neto</th></tr></thead><tbody>
+      ${rows.map((r, i) => `<tr><td class="num">${r.picked ? "–" : i + 1}</td><td style="text-align:left"><b class="${teamCls(r.p)}">${esc(r.p.name)}</b>${r.picked ? '<br><small>levantó en algún hoyo</small>' : ""}</td>
+        <td class="num">${r.thru}</td><td class="num">${r.rounds}/${days}</td><td class="num big">${tp(r.toPar)}</td></tr>`).join("")}
+      </tbody></table></div><p class="note" style="margin-top:6px">Suma del neto respecto del par de todos los hoyos jugados. Quien levantó la pelota queda fuera del ranking medal.</p>`;
+  }
+  const se = c.sessions.find(x => x.id === UI.medalSes);
+  if (!hasOwnBall(se)) return h + `<div class="panel"><p class="note">${esc(se.label)} se juega ${FORMATS[se.format].name}: una sola pelota por pareja, así que no hay medal individual.</p></div>`;
+  const rows = medalBoard(c, SCORES, se.id);
+  if (!rows.length) return h + `<div class="panel"><p class="note">Todavía no hay golpes cargados en ${esc(se.label)}.</p></div>`;
+  return h + `<p class="sub">${esc(se.label)} · ${nm(se)}</p><div class="tw"><table class="lb"><thead><tr><th></th><th style="text-align:left">Jugador</th><th>Hoyos</th><th>Gross</th><th>Neto</th></tr></thead><tbody>
+    ${rows.map((r, i) => `<tr><td class="num">${r.picked ? "–" : i + 1}</td><td style="text-align:left"><b class="${teamCls(r.p)}">${esc(r.p.name)}</b><br><small>hcp ${r.hcp}${r.picked ? " · levantó" : ""}</small></td>
+      <td class="num">${r.thru === 18 ? "F" : r.thru}</td><td class="num">${r.gross}</td>
+      <td class="num big">${tp(r.toPar)}${r.net !== null && !r.picked ? ` <small>(${r.net})</small>` : ""}</td></tr>`).join("")}
+    </tbody></table></div><p class="note" style="margin-top:6px">"F" = terminó los 18; entre paréntesis, su neto total.</p>`;
+}
+
 // ---------- Jugadores ----------
 function viewPlayers() {
   if (!cfg()) return viewBoard();
@@ -238,12 +270,12 @@ function cardEditor(se) {
 function render() {
   const app = document.getElementById("app");
   if (!LOADED) { app.innerHTML = `<div class="empty">Cargando…</div>`; return; }
-  app.innerHTML = UI.view === "match" ? viewMatch() : UI.view === "players" ? viewPlayers() : UI.view === "settings" ? viewSettings() : viewBoard();
+  app.innerHTML = UI.view === "match" ? viewMatch() : UI.view === "medal" ? viewMedal() : UI.view === "players" ? viewPlayers() : UI.view === "settings" ? viewSettings() : viewBoard();
   const tab = UI.view === "match" ? "board" : UI.view;
   document.getElementById("bottom").innerHTML =
     (ST.error ? `<div class="toast"><span>${esc(ST.error)}</span><button class="btn sm" data-act="dismiss">OK</button></div>` : "") +
     (DRAFT ? `<div class="savebar"><span>Cambios sin guardar</span><button class="btn sm" data-act="discard">Descartar</button><button class="btn sm primary" data-act="save">Guardar</button></div>` : "") +
-    `<nav class="tabs">${[["board", "Tablero"], ["players", "Jugadores"], ["settings", "Configuración"]]
+    `<nav class="tabs">${[["board", "Tablero"], ["medal", "Medal"], ["players", "Jugadores"], ["settings", "Config."]]
       .map(([v, l]) => `<button data-act="tab" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>`;
 }
 
@@ -258,6 +290,7 @@ document.addEventListener("click", e => {
     UI.hole = Math.min(18, st(cfg().matches.find(x => x.id === UI.match)).played + 1); scrollTo(0, 0);
   }
   else if (a === "mtab") UI.mtab = b.dataset.v;
+  else if (a === "mses") UI.medalSes = b.dataset.v;
   else if (a === "hole") UI.hole = Math.max(1, Math.min(18, +b.dataset.n));
   else if (a === "unlock") {
     const m = cfg().matches.find(x => x.id === UI.match), v = document.getElementById("pin-input").value.trim();

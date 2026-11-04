@@ -215,3 +215,40 @@ export const half = x => {
   const i = Math.floor(x), h = x - i >= 0.5;
   return (i === 0 && h ? "" : String(i)) + (h ? "½" : "");
 };
+
+// ---------- Ranking medal individual ----------
+// Usa el gross de cada jugador en los formatos con pelota propia (four-ball, four-ball +
+// individuales, singles), con el 100% de su hándicap de cancha de ese día.
+// En foursome, greensome y scramble no hay score individual, así que no cuentan.
+export const hasOwnBall = se => !FORMATS[se.format].team;
+
+export function medalBoard(cfg, allScores, sessionId) {
+  const se = cfg.sessions.find(s => s.id === sessionId);
+  if (!se || !hasOwnBall(se)) return [];
+  const holes = holeList(se);
+  return cfg.players.map(p => {
+    const m = cfg.matches.find(x => x.session === se.id && (x.a.includes(p.id) || x.b.includes(p.id)));
+    const hcp = courseHcp(p.index, se);
+    let thru = 0, gross = 0, toPar = 0, picked = false;
+    holes.forEach(h => {
+      const v = m ? allScores[m.id]?.["h" + h.n]?.[p.id] : undefined;
+      if (v === "X") { picked = true; return; }
+      if (typeof v !== "number") return;
+      thru++; gross += v; toPar += v - h.par - strokesOn(hcp, h.si);
+    });
+    return { p, hcp, thru, gross, toPar, picked, net: thru === 18 ? gross - hcp : null };
+  }).filter(r => r.thru > 0 || r.picked)
+    .sort((a, b) => (a.picked - b.picked) || a.toPar - b.toPar || b.thru - a.thru);
+}
+
+// Acumulado de todos los días con pelota propia: suma del neto vs par.
+export function medalTotal(cfg, allScores) {
+  const days = cfg.sessions.filter(hasOwnBall);
+  const acc = new Map();
+  days.forEach(se => medalBoard(cfg, allScores, se.id).forEach(r => {
+    const a = acc.get(r.p.id) || { p: r.p, toPar: 0, thru: 0, rounds: 0, picked: false };
+    a.toPar += r.toPar; a.thru += r.thru; a.rounds += r.net !== null ? 1 : 0; a.picked = a.picked || r.picked;
+    acc.set(r.p.id, a);
+  }));
+  return [...acc.values()].sort((a, b) => (a.picked - b.picked) || a.toPar - b.toPar || b.thru - a.thru);
+}
