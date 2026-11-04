@@ -162,19 +162,19 @@ function viewMedal() {
     const days = c.sessions.filter(hasOwnBall).length;
     if (!rows.length) return h + `<div class="panel"><p class="note">Todavía no hay golpes cargados.</p></div>`;
     return h + `<div class="tw"><table class="lb"><thead><tr><th></th><th style="text-align:left">Jugador</th><th>Hoyos</th><th>Vueltas</th><th>Neto</th></tr></thead><tbody>
-      ${rows.map((r, i) => `<tr><td class="num">${r.picked ? "–" : i + 1}</td><td style="text-align:left"><b class="${teamCls(r.p)}">${esc(r.p.name)}</b>${r.picked ? '<br><small>levantó en algún hoyo</small>' : ""}</td>
+      ${rows.map((r, i) => `<tr><td class="num">${i + 1}</td><td style="text-align:left"><b class="${teamCls(r.p)}">${esc(r.p.name)}</b>${r.picked ? `<br><small>levantó ${r.picked} hoyo${r.picked > 1 ? "s" : ""}</small>` : ""}</td>
         <td class="num">${r.thru}</td><td class="num">${r.rounds}/${days}</td><td class="num big">${tp(r.toPar)}</td></tr>`).join("")}
-      </tbody></table></div><p class="note" style="margin-top:6px">Suma del neto respecto del par de todos los hoyos jugados. Quien levantó la pelota queda fuera del ranking medal.</p>`;
+      </tbody></table></div><p class="note" style="margin-top:6px">Suma del neto respecto del par de todos los hoyos jugados. Un hoyo levantado cuenta como 10 neto.</p>`;
   }
   const se = c.sessions.find(x => x.id === UI.medalSes);
   if (!hasOwnBall(se)) return h + `<div class="panel"><p class="note">${esc(se.label)} se juega ${FORMATS[se.format].name}: una sola pelota por pareja, así que no hay medal individual.</p></div>`;
   const rows = medalBoard(c, SCORES, se.id);
   if (!rows.length) return h + `<div class="panel"><p class="note">Todavía no hay golpes cargados en ${esc(se.label)}.</p></div>`;
   return h + `<p class="sub">${esc(se.label)} · ${nm(se)}</p><div class="tw"><table class="lb"><thead><tr><th></th><th style="text-align:left">Jugador</th><th>Hoyos</th><th>Gross</th><th>Neto</th></tr></thead><tbody>
-    ${rows.map((r, i) => `<tr><td class="num">${r.picked ? "–" : i + 1}</td><td style="text-align:left"><b class="${teamCls(r.p)}">${esc(r.p.name)}</b><br><small>hcp ${r.hcp}${r.picked ? " · levantó" : ""}</small></td>
+    ${rows.map((r, i) => `<tr><td class="num">${i + 1}</td><td style="text-align:left"><b class="${teamCls(r.p)}">${esc(r.p.name)}</b><br><small>hcp ${r.hcp}${r.picked ? ` · ${r.picked} X` : ""}</small></td>
       <td class="num">${r.thru === 18 ? "F" : r.thru}</td><td class="num">${r.gross}</td>
-      <td class="num big">${tp(r.toPar)}${r.net !== null && !r.picked ? ` <small>(${r.net})</small>` : ""}</td></tr>`).join("")}
-    </tbody></table></div><p class="note" style="margin-top:6px">"F" = terminó los 18; entre paréntesis, su neto total.</p>`;
+      <td class="num big">${tp(r.toPar)}${r.net !== null ? ` <small>(${r.net})</small>` : ""}</td></tr>`).join("")}
+    </tbody></table></div><p class="note" style="margin-top:6px">"F" = terminó los 18; entre paréntesis, su neto total. Un hoyo levantado (X) cuenta como 10 neto.</p>`;
 }
 
 // ---------- Jugadores ----------

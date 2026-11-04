@@ -229,16 +229,19 @@ export function medalBoard(cfg, allScores, sessionId) {
   return cfg.players.map(p => {
     const m = cfg.matches.find(x => x.session === se.id && (x.a.includes(p.id) || x.b.includes(p.id)));
     const hcp = courseHcp(p.index, se);
-    let thru = 0, gross = 0, toPar = 0, picked = false;
+    let thru = 0, gross = 0, toPar = 0, picked = 0;
     holes.forEach(h => {
       const v = m ? allScores[m.id]?.["h" + h.n]?.[p.id] : undefined;
-      if (v === "X") { picked = true; return; }
-      if (typeof v !== "number") return;
-      thru++; gross += v; toPar += v - h.par - strokesOn(hcp, h.si);
+      const k = strokesOn(hcp, h.si);
+      // Hoyo levantado (X): cuenta como 10 neto, o sea 10 + los golpes que recibe en gross.
+      const g = v === "X" ? 10 + k : v;
+      if (typeof g !== "number") return;
+      if (v === "X") picked++;
+      thru++; gross += g; toPar += g - h.par - k;
     });
     return { p, hcp, thru, gross, toPar, picked, net: thru === 18 ? gross - hcp : null };
-  }).filter(r => r.thru > 0 || r.picked)
-    .sort((a, b) => (a.picked - b.picked) || a.toPar - b.toPar || b.thru - a.thru);
+  }).filter(r => r.thru > 0)
+    .sort((a, b) => a.toPar - b.toPar || b.thru - a.thru);
 }
 
 // Acumulado de todos los días con pelota propia: suma del neto vs par.
@@ -246,9 +249,9 @@ export function medalTotal(cfg, allScores) {
   const days = cfg.sessions.filter(hasOwnBall);
   const acc = new Map();
   days.forEach(se => medalBoard(cfg, allScores, se.id).forEach(r => {
-    const a = acc.get(r.p.id) || { p: r.p, toPar: 0, thru: 0, rounds: 0, picked: false };
-    a.toPar += r.toPar; a.thru += r.thru; a.rounds += r.net !== null ? 1 : 0; a.picked = a.picked || r.picked;
+    const a = acc.get(r.p.id) || { p: r.p, toPar: 0, thru: 0, rounds: 0, picked: 0 };
+    a.toPar += r.toPar; a.thru += r.thru; a.rounds += r.net !== null ? 1 : 0; a.picked += r.picked;
     acc.set(r.p.id, a);
   }));
-  return [...acc.values()].sort((a, b) => (a.picked - b.picked) || a.toPar - b.toPar || b.thru - a.thru);
+  return [...acc.values()].sort((a, b) => a.toPar - b.toPar || b.thru - a.thru);
 }
