@@ -72,7 +72,8 @@ function matchRow(m) {
 }
 function viewBoard() {
   if (!cfg()) return `<div class="empty"><h2>Torneo sin configurar</h2><p>El administrador tiene que entrar en Configuración y crear el torneo.</p></div>`;
-  let h = scoreboard() + myCard();
+  const done = cfg().matches.length > 0 && cfg().matches.every(m => st(m).closed);
+  let h = (done ? ceremony() : scoreboard()) + myCard();
   cfg().sessions.forEach(se => {
     const ms = cfg().matches.filter(m => m.session === se.id);
     const p = ms.reduce((a, m) => { const s = st(m); return [a[0] + s.pts[0], a[1] + s.pts[1]]; }, [0, 0]);
@@ -81,6 +82,55 @@ function viewBoard() {
       <div class="list">${ms.map(matchRow).join("")}</div>`;
   });
   return h;
+}
+
+// ---------- Ceremonia de cierre ----------
+// Aparece sola en el Tablero cuando terminaron todos los partidos (incluidos los individuales).
+let CONFETTI_DONE = false;
+function ceremony() {
+  const c = cfg(), t = totals(c, SCORES), tie = t.a === t.b, win = t.a > t.b ? "A" : "B";
+  const aw = computeAwards(c, SCORES, c.sessions.map(s => s.id));
+  // Hasta 2 ganadores se nombran; con más empatados se dice cuántos y los nombres van chicos.
+  const tops = rows => rows.filter(r => r.val === rows[0].val);
+  const who = rows => { const t = tops(rows); return t.length <= 2 ? t.map(r => esc(r.p.name)).join(" y ") : `${t.length} empatados`; };
+  const list = rows => { const t = tops(rows); return t.length > 2 ? `<em>${t.map(r => esc(r.p.name)).join(", ")}</em>` : ""; };
+  const card = (key, icon, label, fmt) => aw[key].length
+    ? `<div class="aw"><i>${icon}</i><small>${label}</small><b>${who(aw[key])}</b><span>${fmt(aw[key][0].val)}</span>${list(aw[key])}</div>` : "";
+  const mvp = aw.mvp;
+  if (!CONFETTI_DONE) { CONFETTI_DONE = true; setTimeout(confetti, 300); }
+  return `<section class="cere t${tie ? "N" : win}">
+    <p class="kick">${esc(c.title)}</p>
+    <div class="trophy" aria-hidden="true">${tie ? "🤝" : "🏆"}</div>
+    <h1>${tie ? "¡Empate!" : `<span class="${win === "A" ? "ta" : "tb"}">${esc(teamName(win))}</span><br>campeón`}</h1>
+    <div class="cscore" aria-label="Resultado final">
+      <div><small class="ta">${esc(teamName("A"))}</small><b class="ta num">${half(t.a) || 0}</b></div><span>final</span>
+      <div><small class="tb">${esc(teamName("B"))}</small><b class="tb num">${half(t.b) || 0}</b></div></div>
+    ${mvp.length ? `<div class="cmvp"><small>MVP de la Ryder</small><b>${who(mvp)}</b><span>${half(mvp[0].val)} punto${mvp[0].val === 1 ? "" : "s"}${tops(mvp).length > 2 ? ` cada uno: ${tops(mvp).map(r => esc(r.p.name)).join(", ")}` : ""}</span></div>` : ""}
+    <div class="cawards">
+      ${card("birdie", "🐦", "Rey del Birdie", v => `${v} birdie${v > 1 ? "s" : ""} neto${v > 1 ? "s" : ""}`)}
+      ${card("piedra", "🪨", "Mano de Piedra", v => `${v} doble${v > 1 ? "s" : ""}+ neto${v > 1 ? "s" : ""}`)}
+      ${card("bombero", "🚒", "El Bombero", v => `${v} hoyo${v > 1 ? "s" : ""} salvado${v > 1 ? "s" : ""}`)}
+      ${card("papa", "🎁", "Papá Noel", v => `perdió recibiendo ${v}`)}
+    </div>
+    <p class="foot">La revancha, en 2027 🍻</p>
+    <div class="cbtns"><button class="btn" data-act="confetti">Otra vez el confeti</button>
+      <button class="btn primary" data-act="wrap" data-v="${myId() || c.players[0].id}">Ver los Wrapped ✨</button></div>
+  </section>`;
+}
+// Confeti en un lienzo fijo sobre la pantalla (colores de los equipos y dorado).
+function confetti() {
+  const cv = document.getElementById("confetti"); if (!cv) return;
+  const ctx = cv.getContext("2d"), dpr = devicePixelRatio || 1;
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  const colors = ["#e0b84a", "#9dbcf5", "#5b8ff0", "#f2f6f1", "#f59d93"];
+  const parts = Array.from({ length: 160 }, () => ({ x: Math.random() * cv.width, y: -Math.random() * cv.height * 0.6,
+    w: (6 + Math.random() * 6) * dpr, h: (3 + Math.random() * 4) * dpr, vy: (2 + Math.random() * 3) * dpr,
+    vx: (Math.random() - .5) * 2 * dpr, r: Math.random() * 6, vr: (Math.random() - .5) * .3, c: colors[(Math.random() * colors.length) | 0] }));
+  const draw = () => { ctx.clearRect(0, 0, cv.width, cv.height); parts.forEach(p => { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }); };
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { draw(); setTimeout(() => ctx.clearRect(0, 0, cv.width, cv.height), 2500); return; }
+  let t = 0;
+  const tick = () => { t++; parts.forEach(p => { p.x += p.vx; p.y += p.vy; p.r += p.vr; }); draw(); if (t < 260) requestAnimationFrame(tick); else ctx.clearRect(0, 0, cv.width, cv.height); };
+  tick();
 }
 
 // Tarjeta "Tu partido": el que está en juego, si no el próximo, si no el último.
@@ -413,6 +463,7 @@ document.addEventListener("click", e => {
   else if (a === "mses") UI.medalSes = b.dataset.v;
   else if (a === "pses") UI.premSes = b.dataset.v;
   else if (a === "whoami") UI.who = true;
+  else if (a === "confetti") { confetti(); return; }
   else if (a === "iam") { setMe(b.dataset.v); UI.who = false; }
   else if (a === "wrap") { UI.view = "wrap"; UI.wrap = b.dataset.v; scrollTo(0, 0); }
   else if (a === "hole") UI.hole = Math.max(1, Math.min(18, +b.dataset.n));
