@@ -26,49 +26,6 @@ export function parseHoles(txt) {
   return [...new Set(String(txt).split(/[^\d]+/).map(Number).filter(n => n >= 1 && n <= 18))].sort((a, b) => a - b);
 }
 
-// ---------- Avisos personalizados ----------
-// Foto del estado de los partidos de un jugador, para comparar antes/después.
-export function snapshotFor(cfg, allScores, pid) {
-  const out = {};
-  cfg.matches.forEach(m => {
-    const mine = m.a.includes(pid) ? "A" : m.b.includes(pid) ? "B" : null;
-    if (!mine) return;
-    const st = matchState(cfg, m, allScores[m.id]);
-    out[m.id] = { mine, lead: st.lead, diff: st.diff, played: st.played, closed: st.matchClosed, text: st.text,
-      duels: (st.duels || []).filter(d => d.a === pid || d.b === pid)
-        .map(d => ({ key: d.a + d.b, opp: d.a === pid ? d.b : d.a, mine: d.a === pid ? "A" : "B", lead: d.lead, closed: d.closed, text: d.text })) };
-  });
-  return out;
-}
-
-// Mensajes según lo que cambió entre dos fotos.
-export function alertsBetween(prev, next, cfg) {
-  const msgs = [], name = id => cfg.players.find(p => p.id === id)?.name || "?";
-  Object.entries(next).forEach(([mid, n]) => {
-    const p = prev[mid]; if (!p || n.played === p.played && n.closed === p.closed) return;
-    const other = n.mine === "A" ? "B" : "A";
-    if (n.closed && !p.closed) {
-      msgs.push(n.lead === n.mine ? `¡Ganaste tu partido ${n.text}! 🏆` : n.lead === other ? `Perdiste ${n.text}. Hay revancha 🍺` : "Partido empatado 🤝");
-    } else if (!n.closed) {
-      if (p.lead === n.mine && n.lead === other) msgs.push("¡Te dieron vuelta el partido! 😱");
-      else if (p.lead === n.mine && n.lead === null) msgs.push("Te están dando vuelta el partido 😬 Quedó All Square");
-      else if (p.lead === other && n.lead === n.mine) msgs.push("¡Lo diste vuelta! 🔥");
-      else if (p.lead === null && n.lead === n.mine && p.played > 0) msgs.push("¡Pasaste adelante! 💪");
-      else if (p.lead === null && n.lead === other && p.played > 0) msgs.push("Te pasaron adelante 😬");
-      else if (p.lead === other && n.lead === null) msgs.push("¡Lo empataste! Vamos que se puede 💪");
-      const left = 18 - n.played;
-      if (left > 0 && Math.abs(n.diff) === left && !(Math.abs(p.diff) === 18 - p.played))
-        msgs.push(n.lead === n.mine ? "Dormie a favor 😎 Con empatar un hoyo, ganás" : "Estás dormie… a remar 🚣");
-    }
-    n.duels.forEach(d => {
-      const pd = p.duels.find(x => x.key === d.key);
-      if (d.closed && pd && !pd.closed)
-        msgs.push(d.lead === d.mine ? `¡Le ganaste el individual a ${name(d.opp)} ${d.text}! 🎯` : d.lead ? `${name(d.opp)} te ganó el individual ${d.text}` : `Empataste el individual con ${name(d.opp)}`);
-    });
-  });
-  return msgs;
-}
-
 // ---------- Ryder Wrapped ----------
 const SCORE_NAMES = { "-3": "Albatros", "-2": "Eagle", "-1": "Birdie", "0": "Par", "1": "Bogey", "2": "Doble bogey", "3": "Triple bogey", "4": "Cuádruple bogey" };
 export const scoreName = d => SCORE_NAMES[String(d)] || (d > 0 ? `+${d}` : String(d));

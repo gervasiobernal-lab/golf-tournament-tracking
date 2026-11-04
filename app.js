@@ -3,7 +3,7 @@ import { COURSES, FORMATS, holeList, courseHcp, strokesOn, matchState, totals,
          defaultMatches, seedConfig, half, totalPoints, pointsOf, medalBoard, medalTotal, hasOwnBall } from "./golf.js";
 import * as data from "./data.js";
 import { AWARDS, computeAwards } from "./premios.js";
-import { extraId, challengeBoard, parseHoles, snapshotFor, alertsBetween, wrapped, scoreName } from "./extras.js";
+import { extraId, challengeBoard, parseHoles, wrapped, scoreName } from "./extras.js";
 
 // ---------- Estado ----------
 let CFG = null;        // configuración guardada (jugadores, días, partidos)
@@ -11,7 +11,7 @@ let DRAFT = null;      // copia en edición del admin, hasta que toque "Guardar"
 let SCORES = {};       // golpes cargados: { idPartido: { h1: { clave: gross } } }
 let ST = {};           // estado de conexión / usuario
 let LOADED = false;
-const UI = { wrap: null, toasts: [], premSes: "all", medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
+const UI = { wrap: null, premSes: "all", medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
 const cfg = () => DRAFT || CFG;
 
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -86,7 +86,7 @@ function viewBoard() {
 // Tarjeta "Tu partido": el que está en juego, si no el próximo, si no el último.
 function myCard() {
   const id = myId();
-  if (!id) return ME === "none" ? "" : `<div class="mecard"><p>¿Quién sos? Elegí tu nombre y te mostramos tu partido y te avisamos cómo viene.</p>
+  if (!id) return ME === "none" ? "" : `<div class="mecard"><p>¿Quién sos? Elegí tu nombre y te mostramos tu partido arriba de todo.</p>
     <button class="btn sm primary" data-act="whoami">Elegir</button></div>`;
   const mine = cfg().matches.filter(isMine);
   const live = mine.find(m => { const s = st(m); return s.played > 0 && !s.closed; });
@@ -354,7 +354,6 @@ function render() {
   const ov = document.getElementById("overlay");
   // Aparece sola la primera vez, solo en el Tablero (no tapa la configuración del admin).
   ov.innerHTML = (UI.who || (ME === null && CFG && UI.view === "board")) ? whoSheet() : "";
-  document.getElementById("toasts").innerHTML = UI.toasts.map(t => `<div class="ping" role="status">${esc(t.msg)}</div>`).join("");
   document.getElementById("bottom").innerHTML =
     (ST.error ? `<div class="toast"><span>${esc(ST.error)}</span><button class="btn sm" data-act="dismiss">OK</button></div>` : "") +
     (DRAFT ? `<div class="savebar"><span>Cambios sin guardar</span><button class="btn sm" data-act="discard">Descartar</button><button class="btn sm primary" data-act="save">Guardar</button></div>` : "") +
@@ -366,7 +365,7 @@ function render() {
 function whoSheet() {
   const btn = p => `<button class="who ${p.team === "A" ? "ta" : "tb"}" data-act="iam" data-v="${p.id}" aria-pressed="${ME === p.id}">${esc(p.name)}</button>`;
   return `<div class="sheetbg"><div class="sheet" role="dialog" aria-label="¿Quién sos?"><h2>¿Quién sos?</h2>
-    <p class="sub">Te mostramos tu partido arriba de todo y te avisamos cuando pase algo. Queda guardado en este celular.</p>
+    <p class="sub">Te mostramos tu partido arriba de todo y lo resaltamos en la lista. Queda guardado en este celular.</p>
     ${["A", "B"].map(sd => `<h3 class="${sd === "A" ? "ta" : "tb"}">${esc(teamName(sd))}</h3><div class="whogrid">${cfg().players.filter(p => p.team === sd).map(btn).join("")}</div>`).join("")}
     <button class="btn" data-act="iam" data-v="none" style="width:100%;margin-top:12px">Solo estoy mirando</button></div></div>`;
 }
@@ -400,21 +399,6 @@ function viewWrapped() {
     <p class="banner">Sacale una captura y mandala al grupo 📸</p>`;
 }
 
-// Avisos: comparamos el estado de tus partidos antes y después de cada actualización.
-let SNAP = null;
-function checkAlerts() {
-  const id = myId(); if (!id || !cfg()) { SNAP = null; return; }
-  const next = snapshotFor(cfg(), SCORES, id);
-  if (SNAP) alertsBetween(SNAP, next, cfg()).forEach(pushToast);
-  SNAP = next;
-}
-function pushToast(msg) {
-  const t = { msg, id: Math.random() };
-  UI.toasts = [...UI.toasts, t].slice(-3);
-  try { navigator.vibrate?.(80); } catch (e) {}
-  setTimeout(() => { UI.toasts = UI.toasts.filter(x => x !== t); softRender(); }, 7000);
-}
-
 // ---------- Eventos ----------
 document.addEventListener("click", e => {
   const b = e.target.closest("button[data-act]"); if (!b || b.disabled) return;
@@ -429,7 +413,7 @@ document.addEventListener("click", e => {
   else if (a === "mses") UI.medalSes = b.dataset.v;
   else if (a === "pses") UI.premSes = b.dataset.v;
   else if (a === "whoami") UI.who = true;
-  else if (a === "iam") { setMe(b.dataset.v); UI.who = false; SNAP = null; checkAlerts(); }
+  else if (a === "iam") { setMe(b.dataset.v); UI.who = false; }
   else if (a === "wrap") { UI.view = "wrap"; UI.wrap = b.dataset.v; scrollTo(0, 0); }
   else if (a === "hole") UI.hole = Math.max(1, Math.min(18, +b.dataset.n));
   else if (a === "unlock") {
@@ -553,8 +537,8 @@ document.addEventListener("focusout", () => { if (pendingRender) { pendingRender
 
 render();
 data.start({
-  onConfig: c => { CFG = c; LOADED = true; checkAlerts(); softRender(); },
-  onScores: s => { SCORES = s; checkAlerts(); softRender(); },
+  onConfig: c => { CFG = c; LOADED = true; softRender(); },
+  onScores: s => { SCORES = s; softRender(); },
   onStatus: s => { ST = { ...ST, ...s }; softRender(); }
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
