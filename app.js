@@ -2,6 +2,7 @@
 import { COURSES, FORMATS, holeList, courseHcp, strokesOn, matchState, totals,
          defaultMatches, seedConfig, half, totalPoints, pointsOf, medalBoard, medalTotal, hasOwnBall } from "./golf.js";
 import * as data from "./data.js";
+import { AWARDS, computeAwards } from "./premios.js";
 
 // ---------- Estado ----------
 let CFG = null;        // configuración guardada (jugadores, días, partidos)
@@ -9,7 +10,7 @@ let DRAFT = null;      // copia en edición del admin, hasta que toque "Guardar"
 let SCORES = {};       // golpes cargados: { idPartido: { h1: { clave: gross } } }
 let ST = {};           // estado de conexión / usuario
 let LOADED = false;
-const UI = { medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
+const UI = { premSes: "all", medalSes: null, view: "board", match: null, hole: 1, mtab: "hole", confirm: null, cardEdit: null, pinErr: false, loginErr: null, busy: false };
 const cfg = () => DRAFT || CFG;
 
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -177,6 +178,32 @@ function viewMedal() {
     </tbody></table></div><p class="note" style="margin-top:6px">"F" = terminó los 18; entre paréntesis, su neto total. Un hoyo levantado (X) cuenta como 10 neto.</p>`;
 }
 
+// ---------- Premios ----------
+function viewPremios() {
+  if (!cfg()) return viewBoard();
+  const c = cfg();
+  const ids = UI.premSes === "all" ? c.sessions.map(s => s.id) : [UI.premSes];
+  const aw = computeAwards(c, SCORES, ids);
+  const picker = `<div class="chips"><button data-act="pses" data-v="all" aria-pressed="${UI.premSes === "all"}">Torneo</button>
+    ${c.sessions.map(se => `<button data-act="pses" data-v="${se.id}" aria-pressed="${UI.premSes === se.id}">${esc(se.label)}</button>`).join("")}</div>`;
+  const unit = { mvp: v => `${half(v)} pt${v === 1 ? "" : "s"}`, birdie: v => `${v} birdie${v > 1 ? "s" : ""}`,
+    piedra: v => `${v} doble${v > 1 ? "s" : ""}+`, bombero: v => `${v} hoyo${v > 1 ? "s" : ""}`, papa: v => `${v} golpe${v > 1 ? "s" : ""}` };
+  const cards = AWARDS.map(a => {
+    const rows = aw[a.key];
+    if (!rows.length) return `<div class="award empty"><div class="aicon">${a.icon}</div><div class="abody"><h3>${a.name}</h3>
+      <p class="note">${a.desc}</p><p class="awin muted">Vacante por ahora</p></div></div>`;
+    const top = rows.filter(r => r.val === rows[0].val), rest = rows.filter(r => r.val !== rows[0].val).slice(0, 3);
+    const teamCls = p => p.team === "A" ? "ta" : "tb";
+    return `<div class="award"><div class="aicon">${a.icon}</div><div class="abody"><h3>${a.name}</h3>
+      <p class="awin">${top.map(r => `<b class="${teamCls(r.p)}">${esc(r.p.name)}</b>`).join(" y ")}<span class="aval num">${unit[a.key](top[0].val)}</span></p>
+      ${top.length === 1 && top[0].sub ? `<p class="asub">${esc(top[0].sub)}</p>` : ""}
+      <p class="note">${a.desc}</p>
+      ${rest.length ? `<p class="arest">Lo siguen: ${rest.map(r => `${esc(r.p.name)} (${unit[a.key](r.val)})`).join(" · ")}</p>` : ""}</div></div>`;
+  }).join("");
+  return `<h2>Premios</h2><p class="sub">Se calculan solos con los golpes que cargan los anotadores y se actualizan en vivo.</p>${picker}
+    <div class="awards">${cards}</div>`;
+}
+
 // ---------- Jugadores ----------
 function viewPlayers() {
   if (!cfg()) return viewBoard();
@@ -270,12 +297,12 @@ function cardEditor(se) {
 function render() {
   const app = document.getElementById("app");
   if (!LOADED) { app.innerHTML = `<div class="empty">Cargando…</div>`; return; }
-  app.innerHTML = UI.view === "match" ? viewMatch() : UI.view === "medal" ? viewMedal() : UI.view === "players" ? viewPlayers() : UI.view === "settings" ? viewSettings() : viewBoard();
+  app.innerHTML = UI.view === "match" ? viewMatch() : UI.view === "medal" ? viewMedal() : UI.view === "premios" ? viewPremios() : UI.view === "players" ? viewPlayers() : UI.view === "settings" ? viewSettings() : viewBoard();
   const tab = UI.view === "match" ? "board" : UI.view;
   document.getElementById("bottom").innerHTML =
     (ST.error ? `<div class="toast"><span>${esc(ST.error)}</span><button class="btn sm" data-act="dismiss">OK</button></div>` : "") +
     (DRAFT ? `<div class="savebar"><span>Cambios sin guardar</span><button class="btn sm" data-act="discard">Descartar</button><button class="btn sm primary" data-act="save">Guardar</button></div>` : "") +
-    `<nav class="tabs">${[["board", "Tablero"], ["medal", "Medal"], ["players", "Jugadores"], ["settings", "Config."]]
+    `<nav class="tabs">${[["board", "Tablero"], ["medal", "Medal"], ["premios", "Premios"], ["players", "Jugadores"], ["settings", "Config."]]
       .map(([v, l]) => `<button data-act="tab" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>`;
 }
 
@@ -291,6 +318,7 @@ document.addEventListener("click", e => {
   }
   else if (a === "mtab") UI.mtab = b.dataset.v;
   else if (a === "mses") UI.medalSes = b.dataset.v;
+  else if (a === "pses") UI.premSes = b.dataset.v;
   else if (a === "hole") UI.hole = Math.max(1, Math.min(18, +b.dataset.n));
   else if (a === "unlock") {
     const m = cfg().matches.find(x => x.id === UI.match), v = document.getElementById("pin-input").value.trim();

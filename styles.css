@@ -61,8 +61,8 @@ h3{font-family:var(--f-display);font-weight:600;font-size:18px;margin:0}
 
 /* Barras inferiores */
 .bottom{position:fixed;left:0;right:0;bottom:0;z-index:10;padding-bottom:env(safe-area-inset-bottom,0px);background:var(--surface);border-top:1px solid var(--line)}
-.tabs{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
-.tabs button{background:none;border:0;padding:12px 4px 14px;font-size:13px;font-weight:600;color:var(--muted)}
+.tabs{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.tabs button{background:none;border:0;padding:12px 2px 14px;font-size:12px;font-weight:600;color:var(--muted)}
 .tabs button[aria-current="page"]{color:var(--ink);box-shadow:inset 0 3px 0 var(--gold)}
 .savebar{max-width:480px;margin:0 auto;display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--warn-soft)}
 .savebar span{flex:1;font-size:13px;font-weight:600;color:var(--warn)}
@@ -175,3 +175,17 @@ td input.bad{border-color:var(--teamB);color:var(--teamB)}
 .chips button[aria-pressed="true"]{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold);background:var(--surface)}
 table.lb td.big{font-family:var(--f-display);font-weight:700;font-size:18px}
 table.lb small{color:var(--muted);font-weight:400}
+
+/* Premios */
+.awards{display:flex;flex-direction:column;gap:10px}
+.award{display:grid;grid-template-columns:48px 1fr;gap:12px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.award:not(.empty){border-color:var(--gold)}
+.aicon{font-size:34px;line-height:1;text-align:center;padding-top:2px}
+.abody{min-width:0;display:flex;flex-direction:column;gap:4px}
+.abody h3{font-size:20px}
+.awin{margin:0;font-size:17px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.awin.muted{color:var(--muted);font-size:14px}
+.aval{font-family:var(--f-display);font-weight:700;font-size:18px;color:var(--gold)}
+.asub{margin:0;font-size:13px}
+.arest{margin:0;font-size:12px;color:var(--muted)}
+.award.empty{opacity:.75}

@@ -124,7 +124,7 @@ export function matchState(cfg, m, scores) {
   duels.forEach(d => { pts[0] += d.pts[0]; pts[1] += d.pts[1]; proj[0] += d.proj[0]; proj[1] += d.proj[1]; });
   return {
     diff, played, text, lead, res, us, holes, duels,
-    matchClosed: closed,
+    matchClosed: closed, mainPts: closed ? [...outcome] : [0, 0],
     closed: closed && duels.every(d => d.closed),   // terminado del todo (four-ball e individuales)
     pts, proj
   };
