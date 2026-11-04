@@ -34,7 +34,7 @@ export const FORMATS = {
     desc: "Tiran los dos siempre y eligen el mejor golpe. 35% del más bajo + 15% del más alto." },
   // (la clave "fourballmedal" se mantiene por compatibilidad; son matches individuales)
   fourballmedal: { name: "Four-ball + individuales", size: 2, team: false, defPct: 90, duels: true,
-    desc: "Match four-ball entre parejas (1 punto, 90% del hándicap) y, en la misma vuelta, dos matches individuales: el primero de cada pareja contra el primero y el segundo contra el segundo (1 punto cada uno, 100% de la diferencia de hándicaps, como en singles)." },
+    desc: "Match four-ball entre parejas (1 punto, 90% del hándicap) y, en la misma vuelta, cuatro matches individuales: cada jugador contra los dos rivales (100% de la diferencia de hándicaps, como en singles)." },
   singles:   { name: "Singles",   size: 1, team: false, defPct: 100,
     desc: "Uno contra uno. 100% de la diferencia de hándicaps." }
 };
@@ -130,14 +130,15 @@ export function matchState(cfg, m, scores) {
   };
 }
 
-// Matches individuales dentro de un four-ball: m.a[i] contra m.b[i], hoyo por hoyo.
+// Matches individuales dentro de un four-ball: cada jugador contra cada rival, hoyo por hoyo.
+// Cada uno vale se.duelPts (½ por defecto).
 // Hándicap como en singles: el % (100) de la diferencia, referido al más bajo de los dos.
 // "X" (levantó) pierde el hoyo; si los dos levantan, empatan.
 export function singleDuels(cfg, m, scores, se, holes) {
-  const pct = se.duelPct ?? 100;
+  const pct = se.duelPct ?? 100, val = se.duelPts ?? 0.5;
   const ch = id => courseHcp(cfg.players.find(x => x.id === id).index, se);
-  return m.a.map((ida, i) => {
-    const idb = m.b[i];
+  const pairs = m.a.flatMap(ida => m.b.map(idb => [ida, idb]));
+  return pairs.map(([ida, idb]) => {
     const ha = Math.round(ch(ida) * pct / 100), hb = Math.round(ch(idb) * pct / 100), lo = Math.min(ha, hb);
     const sa = ha - lo, sb = hb - lo;   // golpes que recibe cada uno en este duelo
     let diff = 0, played = 0;
@@ -155,8 +156,8 @@ export function singleDuels(cfg, m, scores, se, holes) {
     if (played === 0) text = "–";
     else if (closed) text = diff === 0 ? "Empate" : (left > 0 ? `${Math.abs(diff)}&${left}` : `${Math.abs(diff)} UP`);
     else text = diff === 0 ? "AS" : `${Math.abs(diff)} UP`;
-    const out = diff > 0 ? [1, 0] : diff < 0 ? [0, 1] : [0.5, 0.5];
-    return { a: ida, b: idb, sa, sb, diff, played, closed, text,
+    const out = diff > 0 ? [val, 0] : diff < 0 ? [0, val] : [val / 2, val / 2];
+    return { a: ida, b: idb, sa, sb, diff, played, closed, text, val,
       lead: diff > 0 ? "A" : diff < 0 ? "B" : null,
       pts: closed ? [...out] : [0, 0], proj: played === 0 ? [0, 0] : [...out] };
   });
@@ -165,7 +166,7 @@ export function singleDuels(cfg, m, scores, se, holes) {
 // Puntos que reparte un partido (four-ball + individuales reparte 3).
 export const pointsOf = (cfg, m) => {
   const se = cfg.sessions.find(x => x.id === m.session);
-  return 1 + (FORMATS[se.format].duels ? m.a.length : 0);
+  return 1 + (FORMATS[se.format].duels ? m.a.length * m.b.length * (se.duelPts ?? 0.5) : 0);
 };
 export const totalPoints = cfg => cfg.matches.reduce((a, m) => a + pointsOf(cfg, m), 0);
 

@@ -115,7 +115,7 @@ function viewMatch() {
   return h + adminMatchTools(m);
 }
 function duelsPanel(s) {
-  return `<div class="medal"><div class="mhead">Matches individuales <small>(100% de la diferencia)</small></div>${s.duels.map(d => {
+  return `<div class="medal"><div class="mhead">Matches individuales <small>(${half(s.duels[0].val)} pto c/u · 100% de la diferencia)</small></div>${s.duels.map(d => {
     const side = (id, st, cls) => `<span class="mside ${cls} ${d.lead === cls ? "win" : ""}"><b>${esc(pl(id).name)}</b>
       <small>${st ? `recibe ${st}` : "da golpes"}</small></span>`;
     const mid = d.played === 0 ? "vs" : d.closed ? (d.lead ? `${d.text}` : "Empate") : d.text;
@@ -206,7 +206,8 @@ function viewSettings() {
         <div class="field"><label for="sl${se.id}">Slope</label><input id="sl${se.id}" inputmode="numeric" data-act="ssl" data-id="${se.id}" value="${se.slope}" class="num"></div>
       </div>
       ${f.duels ? `<div class="field"><label for="pm${se.id}">% del hándicap en los individuales</label><input id="pm${se.id}" inputmode="numeric" data-act="sdpct" data-id="${se.id}" value="${se.duelPct ?? 100}" class="num"></div>
-        <p class="note">Individuales: se enfrentan los de la misma fila de cada pareja (arriba contra arriba, abajo contra abajo). ${pointsOf(c, ms[0] || { session: se.id, a: [1, 2] })} puntos por partido.</p>` : ""}
+        <div class="field"><label for="pp${se.id}">Puntos por cada individual</label><select id="pp${se.id}" data-act="sdpts" data-id="${se.id}">${opt([["0.5", "½ punto (3 por salida)"], ["1", "1 punto (5 por salida)"]], String(se.duelPts ?? 0.5))}</select></div>
+        <p class="note">Cada jugador juega un individual contra cada rival (4 por salida). ${half(pointsOf(c, ms[0] || { session: se.id, a: [1, 2], b: [1, 2] }))} puntos por salida.</p>` : ""}
       ${!f.team ? `<div class="field"><label for="pc${se.id}">% del hándicap${f.duels ? " en el four-ball" : ""}</label><input id="pc${se.id}" inputmode="numeric" data-act="spct" data-id="${se.id}" value="${se.pct ?? f.defPct}" class="num"></div>` : ""}
       <label class="check"><input type="checkbox" id="ok${se.id}" data-act="sconf" data-id="${se.id}" ${se.confirmed ? "checked" : ""}> Rating, slope y tarjeta confirmados con el club</label>
       ${!se.confirmed ? `<p class="note warn"><span class="chip warn">A confirmar</span> Mientras no esté confirmado, el hándicap y el stroke index son provisorios.</p>` : ""}
@@ -336,6 +337,7 @@ document.addEventListener("change", e => {
     else if (a === "stee") se.tee = el.value.trim() || se.tee;
     else if (a === "scr") { const v = num(el.value); if (v > 50 && v < 85) se.cr = v; }
     else if (a === "ssl") { const v = parseInt(el.value); if (v >= 55 && v <= 155) se.slope = v; }
+    else if (a === "sdpts") se.duelPts = parseFloat(el.value);
     else if (a === "sdpct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.duelPct = v; }
     else if (a === "spct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.pct = v; }
     else if (a === "sconf") se.confirmed = el.checked;
