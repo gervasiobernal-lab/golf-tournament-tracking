@@ -358,8 +358,8 @@ function render() {
   document.getElementById("bottom").innerHTML =
     (ST.error ? `<div class="toast"><span>${esc(ST.error)}</span><button class="btn sm" data-act="dismiss">OK</button></div>` : "") +
     (DRAFT ? `<div class="savebar"><span>Cambios sin guardar</span><button class="btn sm" data-act="discard">Descartar</button><button class="btn sm primary" data-act="save">Guardar</button></div>` : "") +
-    `<nav class="tabs">${[["board", "Tablero"], ["medal", "Medal"], ["premios", "Premios"], ["players", "Jugadores"], ["settings", "Config."]]
-      .map(([v, l]) => `<button data-act="tab" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>`;
+    (UI.view === "wrap" ? "" : `<nav class="tabs">${[["board", "Tablero"], ["medal", "Medal"], ["premios", "Premios"], ["players", "Jugadores"], ["settings", "Config."]]
+      .map(([v, l]) => `<button data-act="tab" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${l}</button>`).join("")}</nav>`);
 }
 
 // ---------- ¿Quién sos? ----------
@@ -392,6 +392,7 @@ function viewWrapped() {
         <div><small>Golpes que te regalaron</small><b class="num">${w.gifts}</b><span>${w.giftsDetail.length ? w.giftsDetail.map(g => `${g.n} en ${esc(g.what)}`).join(" · ") : "ni uno: jugaste sin ventaja"}</span></div>
         <div><small>Birdies netos</small><b class="num">${w.birdiesNet}</b><span>${w.parsOrBetter} hoyos en par o mejor de ${w.holes}</span></div>
       </div>
+      ${w.insights.length ? `<div class="wins"><small>Revelaciones</small><ul>${w.insights.map(i => `<li><span>${i.icon}</span><p>${esc(i.text)}</p></li>`).join("")}</ul></div>` : ""}
       <div class="wbeat"><small>A quién le ganaste</small>
         <p>${w.beatenList.length ? w.beatenList.map(b => `${esc(b.name)}${b.n > 1 ? ` ×${b.n}` : ""}`).join(" · ") : "A nadie… todavía 😅"}</p></div>
       <p class="wfoot">Ryder Santo Domingo · Chile 2026</p>
