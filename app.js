@@ -186,8 +186,8 @@ function viewPremios() {
   const aw = computeAwards(c, SCORES, ids);
   const picker = `<div class="chips"><button data-act="pses" data-v="all" aria-pressed="${UI.premSes === "all"}">Torneo</button>
     ${c.sessions.map(se => `<button data-act="pses" data-v="${se.id}" aria-pressed="${UI.premSes === se.id}">${esc(se.label)}</button>`).join("")}</div>`;
-  const unit = { mvp: v => `${half(v)} pt${v === 1 ? "" : "s"}`, birdie: v => `${v} birdie${v > 1 ? "s" : ""}`,
-    piedra: v => `${v} doble${v > 1 ? "s" : ""}+`, bombero: v => `${v} hoyo${v > 1 ? "s" : ""}`, papa: v => `${v} golpe${v > 1 ? "s" : ""}` };
+  const unit = { mvp: v => `${half(v)} pt${v === 1 ? "" : "s"}`, birdie: v => `${v} birdie${v > 1 ? "s" : ""} neto${v > 1 ? "s" : ""}`,
+    piedra: v => `${v} doble${v > 1 ? "s" : ""}+ neto${v > 1 ? "s" : ""}`, bombero: v => `${v} hoyo${v > 1 ? "s" : ""}`, papa: v => `${v} golpe${v > 1 ? "s" : ""}` };
   const cards = AWARDS.map(a => {
     const rows = aw[a.key];
     if (!rows.length) return `<div class="award empty"><div class="aicon">${a.icon}</div><div class="abody"><h3>${a.name}</h3>

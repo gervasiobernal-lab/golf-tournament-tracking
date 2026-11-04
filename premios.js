@@ -1,10 +1,10 @@
 // premios.js — Premios automáticos de la Ryder, calculados con los golpes cargados.
-import { FORMATS, matchState, strokesOn } from "./golf.js";
+import { FORMATS, matchState, strokesOn, courseHcp } from "./golf.js";
 
 export const AWARDS = [
   { key: "mvp",     icon: "🏅", name: "MVP",            desc: "Más puntos aportados al equipo (partidos terminados)." },
-  { key: "birdie",  icon: "🐦", name: "Rey del Birdie", desc: "Más birdies gross (o mejor)." },
-  { key: "piedra",  icon: "🪨", name: "Mano de Piedra", desc: "Más dobles bogeys gross o peor." },
+  { key: "birdie",  icon: "🐦", name: "Rey del Birdie", desc: "Más birdies netos (o mejor), con el 100% del hándicap de cancha." },
+  { key: "piedra",  icon: "🪨", name: "Mano de Piedra", desc: "Más dobles bogeys netos o peor, con el 100% del hándicap. Los hoyos levantados también cuentan." },
   { key: "bombero", icon: "🚒", name: "El Bombero",     desc: "En four-ball, más hoyos salvados para su pareja: su neto ganó o empató un hoyo que el compañero solo no sacaba." },
   { key: "papa",    icon: "🎁", name: "Papá Noel",      desc: "Perdió un partido recibiendo más golpes que nadie." }
 ];
@@ -30,13 +30,19 @@ export function computeAwards(cfg, allScores, sessionIds) {
     }
     (st.duels || []).forEach(d => { if (d.closed) { bump(mvp, d.a, d.pts[0]); bump(mvp, d.b, d.pts[1]); } });
 
-    // 🐦 / 🪨: solo con pelota propia (en foursome, greensome y scramble el score es de la pareja).
-    if (!f.team) [...m.a, ...m.b].forEach(id => st.holes.forEach(h => {
-      const v = scores["h" + h.n]?.[id];
-      if (typeof v !== "number") return;
-      if (v <= h.par - 1) bump(birdie, id, 1);
-      if (v >= h.par + 2) bump(piedra, id, 1);
-    }));
+    // 🐦 / 🪨: neto con el 100% del hándicap de cancha, solo con pelota propia
+    // (en foursome, greensome y scramble el score es de la pareja). X = levantó: cuenta como doble o peor.
+    if (!f.team) [...m.a, ...m.b].forEach(id => {
+      const hcp = courseHcp(pl(id).index, se);
+      st.holes.forEach(h => {
+        const v = scores["h" + h.n]?.[id];
+        if (v === "X") { bump(piedra, id, 1); return; }
+        if (typeof v !== "number") return;
+        const net = v - strokesOn(hcp, h.si);
+        if (net <= h.par - 1) bump(birdie, id, 1);
+        if (net >= h.par + 2) bump(piedra, id, 1);
+      });
+    });
 
     // 🚒 Bombero: four-ball (con o sin individuales).
     if (!f.team && f.size === 2) {
