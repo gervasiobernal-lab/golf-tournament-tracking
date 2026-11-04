@@ -1,6 +1,6 @@
 // app.js — Interfaz de la app. Dibuja las pantallas y responde a los toques.
 import { COURSES, FORMATS, holeList, courseHcp, strokesOn, matchState, totals,
-         defaultMatches, seedConfig, half } from "./golf.js";
+         defaultMatches, seedConfig, half, totalPoints, pointsOf } from "./golf.js";
 import * as data from "./data.js";
 
 // ---------- Estado ----------
@@ -28,11 +28,11 @@ function edit(fn) { if (!DRAFT) DRAFT = structuredClone(CFG); fn(DRAFT); render(
 
 // ---------- Tablero ----------
 function scoreboard() {
-  const t = totals(cfg(), SCORES), cells = [];
+  const t = totals(cfg(), SCORES), cells = [], TP = totalPoints(cfg()), N = TP * 2;
   const fa = Math.round(t.a * 2), fb = Math.round(t.b * 2), pa = Math.round(t.pa * 2), pb = Math.round(t.pb * 2);
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < N; i++) {
     let c = i < fa ? "fa" : i < pa ? "pa" : "";
-    if (i >= 24 - fb) c = "fb"; else if (i >= 24 - pb && !c) c = "pb";
+    if (i >= N - fb) c = "fb"; else if (i >= N - pb && !c) c = "pb";
     cells.push(`<span class="${c}"></span>`);
   }
   const live = cfg().matches.filter(m => { const s = st(m); return s.played > 0 && !s.closed; }).length;
@@ -46,17 +46,19 @@ function scoreboard() {
       <div class="vs">vs</div>
       <div class="team b"><span class="tname tb">${esc(teamName("B"))}</span><span class="pts num">${half(t.b) || 0}</span></div>
     </div>
-    <div class="track" aria-label="Puntos sobre ${cfg().matches.length}">${cells.join("")}</div>
-    <div class="trackcap"><span>${cfg().matches.length} puntos en juego</span><span>${half(cfg().matches.length / 2 + 0.5)} para ganar</span></div>
+    <div class="track" style="grid-template-columns:repeat(${N},1fr)" aria-label="Puntos sobre ${TP}">${cells.join("")}</div>
+    <div class="trackcap"><span>${TP} puntos en juego</span><span>${half(TP / 2 + 0.5)} para ganar</span></div>
     <div class="proj">${live ? `${live} partido${live > 1 ? "s" : ""} en juego · si terminara ahora: ${half(t.pa) || 0} – ${half(t.pb) || 0}` : "Ningún partido en juego"}</div>
   </section>`;
 }
 function matchRow(m) {
   const s = st(m), cls = s.lead === "A" ? "a" : s.lead === "B" ? "b" : "";
-  const sub = s.closed ? "final" : s.played ? `tras ${s.played}` : "";
+  const sub = s.closed ? "final" : s.matchClosed ? "match final" : s.played ? `tras ${s.played}` : "";
+  const md = s.medal.length && s.medal.some(d => d.a.thru + d.b.thru > 0)
+    ? `<small>medal ${half(s.medal.reduce((x, d) => x + d.proj[0], 0)) || 0}–${half(s.medal.reduce((x, d) => x + d.proj[1], 0)) || 0}</small>` : "";
   return `<button class="mrow" data-act="open" data-id="${m.id}">
     <span class="side ta">${sideNames(m.a)}</span>
-    <span class="pill num ${s.played ? cls : ""} ${s.closed ? "fin" : ""}">${s.text}${sub ? `<small>${sub}</small>` : ""}</span>
+    <span class="pill num ${s.played ? cls : ""} ${s.closed ? "fin" : ""}">${s.text}${sub ? `<small>${sub}</small>` : ""}${md}</span>
     <span class="side b tb">${sideNames(m.b)}</span></button>`;
 }
 function viewBoard() {
@@ -78,11 +80,12 @@ function viewMatch() {
   if (!m) { UI.view = "board"; return viewBoard(); }
   const se = sesOf(m), s = st(m), hole = s.holes[UI.hole - 1], sc = SCORES[m.id]?.["h" + hole.n] || {};
   const can = canScore(m), lead = s.lead ? esc(teamName(s.lead)) : "";
-  const big = s.played === 0 ? "Sin empezar" : s.closed ? (s.lead ? `${lead} gana ${s.text}` : "Empate") : (s.lead ? `${lead} ${s.text}` : "All Square");
+  const big = s.played === 0 ? "Sin empezar" : s.matchClosed ? (s.lead ? `${lead} gana ${s.text}` : "Empate") : (s.lead ? `${lead} ${s.text}` : "All Square");
   let h = `<div class="mtop"><button class="back" data-act="board">‹ Tablero</button>
       <span class="ttl">${esc(se.label)} · ${FORMATS[se.format].name} · ${nm(se)}</span></div>
     <div class="bigstatus"><div class="s ${s.lead === "A" ? "ta" : s.lead === "B" ? "tb" : ""}">${big}</div>
-      <p class="note">${s.closed ? "Partido terminado" : s.played ? `tras ${s.played} hoyo${s.played > 1 ? "s" : ""} · quedan ${18 - s.played}` : "Cargá el hoyo 1 para empezar"}</p></div>`;
+      <p class="note">${s.closed ? "Partido terminado" : s.matchClosed ? "Match terminado · sigue el medal" : s.played ? `tras ${s.played} hoyo${s.played > 1 ? "s" : ""} · quedan ${18 - s.played}` : "Cargá el hoyo 1 para empezar"}</p></div>
+    ${s.medal.length ? medalPanel(s) : ""}`;
   if (!can) h += `<div class="lock"><p>${UI.pinErr ? '<b class="tb">PIN incorrecto.</b> ' : ""}Para cargar golpes ingresá el PIN del partido. Sin PIN podés mirar.</p>
       <input id="pin-input" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="PIN del partido">
       <button class="btn sm primary" data-act="unlock">Cargar</button></div>`;
@@ -102,7 +105,7 @@ function viewMatch() {
       <div class="step"><button data-act="inc" data-k="${u.key}" data-d="-1" aria-label="Restar golpe" ${can ? "" : "disabled"}>−</button>
         <span class="val num ${g === undefined || g === "X" ? "empty" : ""}">${g === undefined ? "–" : g}</span>
         <button data-act="inc" data-k="${u.key}" data-d="1" aria-label="Sumar golpe" ${can ? "" : "disabled"}>+</button>
-        <button class="x" data-act="pick" data-k="${u.key}" aria-pressed="${g === "X"}" title="Levantó la pelota" ${can ? "" : "disabled"}>X</button></div></div>`;
+        ${FORMATS[se.format].medal ? "" : `<button class="x" data-act="pick" data-k="${u.key}" aria-pressed="${g === "X"}" title="Levantó la pelota" ${can ? "" : "disabled"}>X</button>`}</div></div>`;
   });
   const r = s.res[UI.hole - 1];
   h += `<div class="verdict ${r === "A" || r === "B" ? r : ""}">${r === null ? "Falta cargar el gross de todos" : r === "H" ? "Hoyo empatado" : `Hoyo para ${esc(teamName(r))}`}</div></div>
@@ -110,6 +113,16 @@ function viewMatch() {
       <button class="btn primary" data-act="hole" data-n="${UI.hole + 1}" ${UI.hole === 18 ? "disabled" : ""}>Hoyo ${Math.min(18, UI.hole + 1)} ›</button></div>
     <p class="banner">● = golpe recibido en el hoyo. Hándicap de juego: ${s.us.map(u => `${u.pids.map(id => esc(pl(id).name)).join("/")} ${u.hcp}`).join(" · ")}</p>`;
   return h + adminMatchTools(m);
+}
+function medalPanel(s) {
+  const tp = n => n === 0 ? "E" : n > 0 ? "+" + n : String(n);
+  return `<div class="medal"><div class="mhead">Medal individual <small>(100% hcp)</small></div>${s.medal.map(d => {
+    const w = d.diff < 0 ? "A" : d.diff > 0 ? "B" : "";
+    const side = (c, cls) => `<span class="mside ${cls} ${w === cls ? "win" : ""}"><b>${esc(pl(c.id).name)}</b>
+      <small>${c.thru ? (c.thru === 18 ? `neto ${c.net}` : `${tp(c.toPar)} · ${c.thru} h`) : "–"} · hcp ${c.hcp}</small></span>`;
+    const mid = d.done ? (d.diff === 0 ? "Empate" : `por ${Math.abs(d.diff)}`) : (d.a.thru + d.b.thru ? (d.diff === 0 ? "Iguales" : `${Math.abs(d.diff)} gol.`) : "vs");
+    return `<div class="mrowm">${side(d.a, "A")}<span class="mmid ${d.done ? "fin" : ""}">${mid}</span>${side(d.b, "B")}</div>`;
+  }).join("")}</div>`;
 }
 function adminMatchTools(m) {
   if (!ST.admin) return "";
@@ -194,7 +207,9 @@ function viewSettings() {
         <div class="field"><label for="cr${se.id}">Rating</label><input id="cr${se.id}" inputmode="decimal" data-act="scr" data-id="${se.id}" value="${se.cr}" class="num"></div>
         <div class="field"><label for="sl${se.id}">Slope</label><input id="sl${se.id}" inputmode="numeric" data-act="ssl" data-id="${se.id}" value="${se.slope}" class="num"></div>
       </div>
-      ${!f.team ? `<div class="field"><label for="pc${se.id}">% del hándicap</label><input id="pc${se.id}" inputmode="numeric" data-act="spct" data-id="${se.id}" value="${se.pct ?? f.defPct}" class="num"></div>` : ""}
+      ${f.medal ? `<div class="field"><label for="pm${se.id}">% del hándicap en el medal</label><input id="pm${se.id}" inputmode="numeric" data-act="smpct" data-id="${se.id}" value="${se.medalPct ?? 100}" class="num"></div>
+        <p class="note">Medal: se enfrentan los de la misma fila de cada pareja (arriba contra arriba, abajo contra abajo). ${pointsOf(c, ms[0] || { session: se.id, a: [1, 2] })} puntos por partido.</p>` : ""}
+      ${!f.team ? `<div class="field"><label for="pc${se.id}">% del hándicap${f.medal ? " en el match" : ""}</label><input id="pc${se.id}" inputmode="numeric" data-act="spct" data-id="${se.id}" value="${se.pct ?? f.defPct}" class="num"></div>` : ""}
       <label class="check"><input type="checkbox" id="ok${se.id}" data-act="sconf" data-id="${se.id}" ${se.confirmed ? "checked" : ""}> Rating, slope y tarjeta confirmados con el club</label>
       ${!se.confirmed ? `<p class="note warn"><span class="chip warn">A confirmar</span> Mientras no esté confirmado, el hándicap y el stroke index son provisorios.</p>` : ""}
       <button class="btn sm" data-act="cardedit" data-id="${se.id}">${UI.cardEdit === se.id ? "Cerrar tarjeta" : "Editar tarjeta (par y stroke index)"}</button>
@@ -323,6 +338,7 @@ document.addEventListener("change", e => {
     else if (a === "stee") se.tee = el.value.trim() || se.tee;
     else if (a === "scr") { const v = num(el.value); if (v > 50 && v < 85) se.cr = v; }
     else if (a === "ssl") { const v = parseInt(el.value); if (v >= 55 && v <= 155) se.slope = v; }
+    else if (a === "smpct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.medalPct = v; }
     else if (a === "spct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.pct = v; }
     else if (a === "sconf") se.confirmed = el.checked;
     else if (a === "hpar" || a === "hsi") {

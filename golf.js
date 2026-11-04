@@ -32,6 +32,8 @@ export const FORMATS = {
     desc: "Salen los dos, eligen la mejor y alternan. 60% del más bajo + 40% del más alto." },
   scramble:  { name: "Scramble",  size: 2, team: true,
     desc: "Tiran los dos siempre y eligen el mejor golpe. 35% del más bajo + 15% del más alto." },
+  fourballmedal: { name: "Four-ball + medal", size: 2, team: false, defPct: 90, medal: true,
+    desc: "Match four-ball entre parejas (1 punto, 90% del hándicap) y además dos duelos medal individuales: el primero de cada pareja contra el primero y el segundo contra el segundo, neto total de los 18 hoyos con el 100% del hándicap (1 punto cada uno). Hay que embocar todos los hoyos." },
   singles:   { name: "Singles",   size: 1, team: false, defPct: 100,
     desc: "Uno contra uno. 100% de la diferencia de hándicaps." }
 };
@@ -116,12 +118,46 @@ export function matchState(cfg, m, scores) {
   else if (closed) text = diff === 0 ? "Empate" : (left > 0 ? `${Math.abs(diff)}&${left}` : `${Math.abs(diff)} UP`);
   else text = diff === 0 ? "AS" : `${Math.abs(diff)} UP`;
   const outcome = diff > 0 ? [1, 0] : diff < 0 ? [0, 1] : [0.5, 0.5];
+  const pts = closed ? [...outcome] : [0, 0], proj = played === 0 ? [0, 0] : [...outcome];
+  const medal = FORMATS[se.format].medal ? medalDuels(cfg, m, scores, se, holes) : [];
+  medal.forEach(d => { pts[0] += d.pts[0]; pts[1] += d.pts[1]; proj[0] += d.proj[0]; proj[1] += d.proj[1]; });
   return {
-    diff, played, closed, text, lead, res, us, holes,
-    pts: closed ? outcome : [0, 0],
-    proj: played === 0 ? [0, 0] : outcome
+    diff, played, text, lead, res, us, holes, medal,
+    matchClosed: closed,
+    closed: closed && medal.every(d => d.done),   // terminado del todo (match y medal)
+    pts, proj
   };
 }
+
+// Duelos medal individuales: m.a[i] contra m.b[i], neto total con el % de medal (100%).
+export function medalDuels(cfg, m, scores, se, holes) {
+  const pct = se.medalPct ?? 100;
+  const card = id => {
+    const p = cfg.players.find(x => x.id === id);
+    const hcp = Math.round(courseHcp(p.index, se) * pct / 100);
+    let thru = 0, gross = 0, toPar = 0;
+    holes.forEach(h => {
+      const v = scores?.["h" + h.n]?.[id];
+      if (typeof v !== "number") return;
+      thru++; gross += v; toPar += v - h.par - strokesOn(hcp, h.si);
+    });
+    return { id, hcp, thru, gross, toPar, net: thru === 18 ? gross - hcp : null };
+  };
+  return m.a.map((ida, i) => {
+    const a = card(ida), b = card(m.b[i]);
+    const done = a.thru === 18 && b.thru === 18;
+    const cmp = done ? a.net - b.net : a.toPar - b.toPar;   // en juego: neto vs par en lo jugado
+    const out = cmp < 0 ? [1, 0] : cmp > 0 ? [0, 1] : [0.5, 0.5];
+    return { a, b, done, diff: cmp, pts: done ? out : [0, 0], proj: a.thru + b.thru === 0 ? [0, 0] : out };
+  });
+}
+
+// Puntos que reparte un partido (four-ball + medal reparte 3).
+export const pointsOf = (cfg, m) => {
+  const se = cfg.sessions.find(x => x.id === m.session);
+  return 1 + (FORMATS[se.format].medal ? m.a.length : 0);
+};
+export const totalPoints = cfg => cfg.matches.reduce((a, m) => a + pointsOf(cfg, m), 0);
 
 export function totals(cfg, allScores) {
   let a = 0, b = 0, pa = 0, pb = 0;
