@@ -4,7 +4,7 @@ import { FORMATS, matchState, holeList, courseHcp, strokesOn, COURSES } from "./
 
 // ---------- Long drive y closest to the pin ----------
 // Se guardan en la colección "scores", documento "x-<idPartido>", con campos
-// "ld<hoyo>" / "ctp<hoyo>" = { pid, d } (d = distancia en metros, opcional).
+// "ld<hoyo>" / "ctp<hoyo>" = { pid, d } (d = yardas a la bandera, opcional: se mide con láser).
 export const extraId = matchId => "x-" + matchId;
 
 // Ranking de un desafío (tipo "ld" o "ctp") en un hoyo de una sesión.
@@ -16,8 +16,8 @@ export function challengeBoard(cfg, allScores, sessionId, type, hole) {
     const p = cfg.players.find(x => x.id === e.pid);
     if (p) rows.push({ p, d: typeof e.d === "number" ? e.d : null, match: m });
   });
-  // closest: menor distancia; long drive: mayor. Sin distancia, al final.
-  rows.sort((a, b) => a.d === null ? 1 : b.d === null ? -1 : type === "ctp" ? a.d - b.d : b.d - a.d);
+  // En los dos gana el que quedó más cerca de la bandera (menos yardas). Sin distancia, al final.
+  rows.sort((a, b) => a.d === null ? 1 : b.d === null ? -1 : a.d - b.d);
   return rows;
 }
 

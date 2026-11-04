@@ -141,7 +141,7 @@ function viewMatch() {
 }
 // Panel para anotar el long drive o el closest del grupo en ese hoyo.
 function challengePanel(m, se, n, can) {
-  const types = [["ld", "Long drive 🏌️", "Distancia aprox. (m)"], ["ctp", "Closest to the pin 🎯", "Distancia a la bandera (m)"]]
+  const types = [["ld", "Long drive 🏌️", "Yardas a la bandera"], ["ctp", "Closest to the pin 🎯", "Yardas a la bandera"]]
     .filter(([t]) => (se[t] || []).includes(n));
   if (!types.length) return "";
   const ex = SCORES[extraId(m.id)] || {}, ids = [...m.a, ...m.b];
@@ -152,7 +152,7 @@ function challengePanel(m, se, n, can) {
         <select id="cp${t}${n}" data-act="chalp" data-t="${t}" data-n="${n}" ${can ? "" : "disabled"}><option value="">${t === "ctp" ? "Nadie en green" : "Sin cargar"}</option>
           ${ids.map(id => `<option value="${id}" ${e.pid === id ? "selected" : ""}>${esc(pl(id).name)}</option>`).join("")}</select></div>
       <div class="field"><label for="cd${t}${n}">${lab}</label><input id="cd${t}${n}" inputmode="decimal" data-act="chald" data-t="${t}" data-n="${n}" value="${typeof e.d === "number" ? String(e.d).replace(".", ",") : ""}" ${can && e.pid ? "" : "disabled"}></div></div>
-      ${best ? `<p class="note">Va ganando el día: <b>${esc(best.p.name)}</b>${best.d !== null ? ` · ${String(best.d).replace(".", ",")} m` : ""}</p>` : ""}</div>`;
+      ${best ? `<p class="note">Va ganando el día: <b>${esc(best.p.name)}</b>${best.d !== null ? ` · ${String(best.d).replace(".", ",")} yd` : ""}</p>` : ""}</div>`;
   }).join("");
 }
 function duelsPanel(s) {
@@ -245,11 +245,11 @@ function viewPremios() {
       const rows = challengeBoard(c, SCORES, sid, t, n);
       return `<div class="award ${rows.length ? "" : "empty"}"><div class="aicon">${icon}</div><div class="abody"><h3>${name}</h3>
         <p class="asub">${esc(se.label)} · hoyo ${n}</p>
-        ${rows.length ? `<ol class="clist">${rows.map(r => `<li><b class="${r.p.team === "A" ? "ta" : "tb"}">${esc(r.p.name)}</b>${r.d !== null ? ` <span class="num">${String(r.d).replace(".", ",")} m</span>` : ""}</li>`).join("")}</ol>` : `<p class="awin muted">Sin cargar todavía</p>`}
+        ${rows.length ? `<ol class="clist">${rows.map(r => `<li><b class="${r.p.team === "A" ? "ta" : "tb"}">${esc(r.p.name)}</b>${r.d !== null ? ` <span class="num">${String(r.d).replace(".", ",")} yd</span>` : ""}</li>`).join("")}</ol>` : `<p class="awin muted">Sin cargar todavía</p>`}
       </div></div>`; })); }).join("");
   return `<h2>Premios</h2><p class="sub">Se calculan solos con los golpes que cargan los anotadores y se actualizan en vivo.</p>${picker}
     <div class="awards">${cards}</div>
-    ${chal ? `<h2>Long drive y closest</h2><p class="sub">Cada anotador carga el mejor de su grupo en el hoyo elegido. Gana la mayor distancia (long drive) o la menor (closest).</p><div class="awards">${chal}</div>` : ""}`;
+    ${chal ? `<h2>Long drive y closest</h2><p class="sub">Cada anotador carga el mejor de su grupo y las yardas que le quedaron a la bandera (con el láser). En los dos gana el que quedó más cerca.</p><div class="awards">${chal}</div>` : ""}`;
 }
 
 // ---------- Jugadores ----------
@@ -496,7 +496,7 @@ document.addEventListener("change", e => {
     const field = el.dataset.t + el.dataset.n, cur = (SCORES[extraId(m.id)] || {})[field] || {};
     let v;
     if (a === "chalp") v = el.value ? { pid: el.value, ...(typeof cur.d === "number" ? { d: cur.d } : {}) } : null;
-    else { const d = parseFloat(el.value.replace(",", ".")); v = cur.pid ? { pid: cur.pid, ...(d > 0 && d < 500 ? { d } : {}) } : null; }
+    else { const d = parseFloat(el.value.replace(",", ".")); v = cur.pid ? { pid: cur.pid, ...(d >= 0 && d < 700 ? { d } : {}) } : null; }
     const x = SCORES[extraId(m.id)] = { ...(SCORES[extraId(m.id)] || {}) };
     if (v === null) delete x[field]; else x[field] = v;
     data.setExtra(extraId(m.id), field, v); render(); return;
