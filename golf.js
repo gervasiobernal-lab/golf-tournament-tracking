@@ -32,8 +32,9 @@ export const FORMATS = {
     desc: "Salen los dos, eligen la mejor y alternan. 60% del más bajo + 40% del más alto." },
   scramble:  { name: "Scramble",  size: 2, team: true,
     desc: "Tiran los dos siempre y eligen el mejor golpe. 35% del más bajo + 15% del más alto." },
-  fourballmedal: { name: "Four-ball + medal", size: 2, team: false, defPct: 90, medal: true,
-    desc: "Match four-ball entre parejas (1 punto, 90% del hándicap) y además dos duelos medal individuales: el primero de cada pareja contra el primero y el segundo contra el segundo, neto total de los 18 hoyos con el 100% del hándicap (1 punto cada uno). Hay que embocar todos los hoyos." },
+  // (la clave "fourballmedal" se mantiene por compatibilidad; son matches individuales)
+  fourballmedal: { name: "Four-ball + individuales", size: 2, team: false, defPct: 90, duels: true,
+    desc: "Match four-ball entre parejas (1 punto, 90% del hándicap) y, en la misma vuelta, dos matches individuales: el primero de cada pareja contra el primero y el segundo contra el segundo (1 punto cada uno, 100% de la diferencia de hándicaps, como en singles)." },
   singles:   { name: "Singles",   size: 1, team: false, defPct: 100,
     desc: "Uno contra uno. 100% de la diferencia de hándicaps." }
 };
@@ -119,43 +120,52 @@ export function matchState(cfg, m, scores) {
   else text = diff === 0 ? "AS" : `${Math.abs(diff)} UP`;
   const outcome = diff > 0 ? [1, 0] : diff < 0 ? [0, 1] : [0.5, 0.5];
   const pts = closed ? [...outcome] : [0, 0], proj = played === 0 ? [0, 0] : [...outcome];
-  const medal = FORMATS[se.format].medal ? medalDuels(cfg, m, scores, se, holes) : [];
-  medal.forEach(d => { pts[0] += d.pts[0]; pts[1] += d.pts[1]; proj[0] += d.proj[0]; proj[1] += d.proj[1]; });
+  const duels = FORMATS[se.format].duels ? singleDuels(cfg, m, scores, se, holes) : [];
+  duels.forEach(d => { pts[0] += d.pts[0]; pts[1] += d.pts[1]; proj[0] += d.proj[0]; proj[1] += d.proj[1]; });
   return {
-    diff, played, text, lead, res, us, holes, medal,
+    diff, played, text, lead, res, us, holes, duels,
     matchClosed: closed,
-    closed: closed && medal.every(d => d.done),   // terminado del todo (match y medal)
+    closed: closed && duels.every(d => d.closed),   // terminado del todo (four-ball e individuales)
     pts, proj
   };
 }
 
-// Duelos medal individuales: m.a[i] contra m.b[i], neto total con el % de medal (100%).
-export function medalDuels(cfg, m, scores, se, holes) {
-  const pct = se.medalPct ?? 100;
-  const card = id => {
-    const p = cfg.players.find(x => x.id === id);
-    const hcp = Math.round(courseHcp(p.index, se) * pct / 100);
-    let thru = 0, gross = 0, toPar = 0;
-    holes.forEach(h => {
-      const v = scores?.["h" + h.n]?.[id];
-      if (typeof v !== "number") return;
-      thru++; gross += v; toPar += v - h.par - strokesOn(hcp, h.si);
-    });
-    return { id, hcp, thru, gross, toPar, net: thru === 18 ? gross - hcp : null };
-  };
+// Matches individuales dentro de un four-ball: m.a[i] contra m.b[i], hoyo por hoyo.
+// Hándicap como en singles: el % (100) de la diferencia, referido al más bajo de los dos.
+// "X" (levantó) pierde el hoyo; si los dos levantan, empatan.
+export function singleDuels(cfg, m, scores, se, holes) {
+  const pct = se.duelPct ?? 100;
+  const ch = id => courseHcp(cfg.players.find(x => x.id === id).index, se);
   return m.a.map((ida, i) => {
-    const a = card(ida), b = card(m.b[i]);
-    const done = a.thru === 18 && b.thru === 18;
-    const cmp = done ? a.net - b.net : a.toPar - b.toPar;   // en juego: neto vs par en lo jugado
-    const out = cmp < 0 ? [1, 0] : cmp > 0 ? [0, 1] : [0.5, 0.5];
-    return { a, b, done, diff: cmp, pts: done ? out : [0, 0], proj: a.thru + b.thru === 0 ? [0, 0] : out };
+    const idb = m.b[i];
+    const ha = Math.round(ch(ida) * pct / 100), hb = Math.round(ch(idb) * pct / 100), lo = Math.min(ha, hb);
+    const sa = ha - lo, sb = hb - lo;   // golpes que recibe cada uno en este duelo
+    let diff = 0, played = 0;
+    for (const h of holes) {
+      const va = scores?.["h" + h.n]?.[ida], vb = scores?.["h" + h.n]?.[idb];
+      if (va === undefined || vb === undefined) break;
+      played++;
+      const na = va === "X" ? Infinity : va - strokesOn(sa, h.si);
+      const nb = vb === "X" ? Infinity : vb - strokesOn(sb, h.si);
+      if (na < nb) diff++; else if (nb < na) diff--;
+      if (Math.abs(diff) > 18 - played) break;
+    }
+    const left = 18 - played, closed = played === 18 || Math.abs(diff) > left;
+    let text;
+    if (played === 0) text = "–";
+    else if (closed) text = diff === 0 ? "Empate" : (left > 0 ? `${Math.abs(diff)}&${left}` : `${Math.abs(diff)} UP`);
+    else text = diff === 0 ? "AS" : `${Math.abs(diff)} UP`;
+    const out = diff > 0 ? [1, 0] : diff < 0 ? [0, 1] : [0.5, 0.5];
+    return { a: ida, b: idb, sa, sb, diff, played, closed, text,
+      lead: diff > 0 ? "A" : diff < 0 ? "B" : null,
+      pts: closed ? [...out] : [0, 0], proj: played === 0 ? [0, 0] : [...out] };
   });
 }
 
-// Puntos que reparte un partido (four-ball + medal reparte 3).
+// Puntos que reparte un partido (four-ball + individuales reparte 3).
 export const pointsOf = (cfg, m) => {
   const se = cfg.sessions.find(x => x.id === m.session);
-  return 1 + (FORMATS[se.format].medal ? m.a.length : 0);
+  return 1 + (FORMATS[se.format].duels ? m.a.length : 0);
 };
 export const totalPoints = cfg => cfg.matches.reduce((a, m) => a + pointsOf(cfg, m), 0);
 

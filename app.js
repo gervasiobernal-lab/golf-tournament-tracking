@@ -53,9 +53,9 @@ function scoreboard() {
 }
 function matchRow(m) {
   const s = st(m), cls = s.lead === "A" ? "a" : s.lead === "B" ? "b" : "";
-  const sub = s.closed ? "final" : s.matchClosed ? "match final" : s.played ? `tras ${s.played}` : "";
-  const md = s.medal.length && s.medal.some(d => d.a.thru + d.b.thru > 0)
-    ? `<small>medal ${half(s.medal.reduce((x, d) => x + d.proj[0], 0)) || 0}–${half(s.medal.reduce((x, d) => x + d.proj[1], 0)) || 0}</small>` : "";
+  const sub = s.closed ? "final" : s.matchClosed ? "four-ball final" : s.played ? `tras ${s.played}` : "";
+  const md = s.duels.length && s.duels.some(d => d.played > 0)
+    ? `<small>indiv. ${half(s.duels.reduce((x, d) => x + d.proj[0], 0)) || 0}–${half(s.duels.reduce((x, d) => x + d.proj[1], 0)) || 0}</small>` : "";
   return `<button class="mrow" data-act="open" data-id="${m.id}">
     <span class="side ta">${sideNames(m.a)}</span>
     <span class="pill num ${s.played ? cls : ""} ${s.closed ? "fin" : ""}">${s.text}${sub ? `<small>${sub}</small>` : ""}${md}</span>
@@ -84,8 +84,8 @@ function viewMatch() {
   let h = `<div class="mtop"><button class="back" data-act="board">‹ Tablero</button>
       <span class="ttl">${esc(se.label)} · ${FORMATS[se.format].name} · ${nm(se)}</span></div>
     <div class="bigstatus"><div class="s ${s.lead === "A" ? "ta" : s.lead === "B" ? "tb" : ""}">${big}</div>
-      <p class="note">${s.closed ? "Partido terminado" : s.matchClosed ? "Match terminado · sigue el medal" : s.played ? `tras ${s.played} hoyo${s.played > 1 ? "s" : ""} · quedan ${18 - s.played}` : "Cargá el hoyo 1 para empezar"}</p></div>
-    ${s.medal.length ? medalPanel(s) : ""}`;
+      <p class="note">${s.closed ? "Partido terminado" : s.matchClosed ? "Four-ball terminado · siguen los individuales" : s.played ? `tras ${s.played} hoyo${s.played > 1 ? "s" : ""} · quedan ${18 - s.played}` : "Cargá el hoyo 1 para empezar"}</p></div>
+    ${s.duels.length ? duelsPanel(s) : ""}`;
   if (!can) h += `<div class="lock"><p>${UI.pinErr ? '<b class="tb">PIN incorrecto.</b> ' : ""}Para cargar golpes ingresá el PIN del partido. Sin PIN podés mirar.</p>
       <input id="pin-input" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="PIN del partido">
       <button class="btn sm primary" data-act="unlock">Cargar</button></div>`;
@@ -105,7 +105,7 @@ function viewMatch() {
       <div class="step"><button data-act="inc" data-k="${u.key}" data-d="-1" aria-label="Restar golpe" ${can ? "" : "disabled"}>−</button>
         <span class="val num ${g === undefined || g === "X" ? "empty" : ""}">${g === undefined ? "–" : g}</span>
         <button data-act="inc" data-k="${u.key}" data-d="1" aria-label="Sumar golpe" ${can ? "" : "disabled"}>+</button>
-        ${FORMATS[se.format].medal ? "" : `<button class="x" data-act="pick" data-k="${u.key}" aria-pressed="${g === "X"}" title="Levantó la pelota" ${can ? "" : "disabled"}>X</button>`}</div></div>`;
+        <button class="x" data-act="pick" data-k="${u.key}" aria-pressed="${g === "X"}" title="Levantó la pelota" ${can ? "" : "disabled"}>X</button></div></div>`;
   });
   const r = s.res[UI.hole - 1];
   h += `<div class="verdict ${r === "A" || r === "B" ? r : ""}">${r === null ? "Falta cargar el gross de todos" : r === "H" ? "Hoyo empatado" : `Hoyo para ${esc(teamName(r))}`}</div></div>
@@ -114,14 +114,12 @@ function viewMatch() {
     <p class="banner">● = golpe recibido en el hoyo. Hándicap de juego: ${s.us.map(u => `${u.pids.map(id => esc(pl(id).name)).join("/")} ${u.hcp}`).join(" · ")}</p>`;
   return h + adminMatchTools(m);
 }
-function medalPanel(s) {
-  const tp = n => n === 0 ? "E" : n > 0 ? "+" + n : String(n);
-  return `<div class="medal"><div class="mhead">Medal individual <small>(100% hcp)</small></div>${s.medal.map(d => {
-    const w = d.diff < 0 ? "A" : d.diff > 0 ? "B" : "";
-    const side = (c, cls) => `<span class="mside ${cls} ${w === cls ? "win" : ""}"><b>${esc(pl(c.id).name)}</b>
-      <small>${c.thru ? (c.thru === 18 ? `neto ${c.net}` : `${tp(c.toPar)} · ${c.thru} h`) : "–"} · hcp ${c.hcp}</small></span>`;
-    const mid = d.done ? (d.diff === 0 ? "Empate" : `por ${Math.abs(d.diff)}`) : (d.a.thru + d.b.thru ? (d.diff === 0 ? "Iguales" : `${Math.abs(d.diff)} gol.`) : "vs");
-    return `<div class="mrowm">${side(d.a, "A")}<span class="mmid ${d.done ? "fin" : ""}">${mid}</span>${side(d.b, "B")}</div>`;
+function duelsPanel(s) {
+  return `<div class="medal"><div class="mhead">Matches individuales <small>(100% de la diferencia)</small></div>${s.duels.map(d => {
+    const side = (id, st, cls) => `<span class="mside ${cls} ${d.lead === cls ? "win" : ""}"><b>${esc(pl(id).name)}</b>
+      <small>${st ? `recibe ${st}` : "da golpes"}</small></span>`;
+    const mid = d.played === 0 ? "vs" : d.closed ? (d.lead ? `${d.text}` : "Empate") : d.text;
+    return `<div class="mrowm">${side(d.a, d.sa, "A")}<span class="mmid ${d.closed ? "fin" : ""} ${d.lead === "A" ? "ta" : d.lead === "B" ? "tb" : ""}">${mid}${d.played && !d.closed ? `<small> · ${d.played}h</small>` : ""}</span>${side(d.b, d.sb, "B")}</div>`;
   }).join("")}</div>`;
 }
 function adminMatchTools(m) {
@@ -207,9 +205,9 @@ function viewSettings() {
         <div class="field"><label for="cr${se.id}">Rating</label><input id="cr${se.id}" inputmode="decimal" data-act="scr" data-id="${se.id}" value="${se.cr}" class="num"></div>
         <div class="field"><label for="sl${se.id}">Slope</label><input id="sl${se.id}" inputmode="numeric" data-act="ssl" data-id="${se.id}" value="${se.slope}" class="num"></div>
       </div>
-      ${f.medal ? `<div class="field"><label for="pm${se.id}">% del hándicap en el medal</label><input id="pm${se.id}" inputmode="numeric" data-act="smpct" data-id="${se.id}" value="${se.medalPct ?? 100}" class="num"></div>
-        <p class="note">Medal: se enfrentan los de la misma fila de cada pareja (arriba contra arriba, abajo contra abajo). ${pointsOf(c, ms[0] || { session: se.id, a: [1, 2] })} puntos por partido.</p>` : ""}
-      ${!f.team ? `<div class="field"><label for="pc${se.id}">% del hándicap${f.medal ? " en el match" : ""}</label><input id="pc${se.id}" inputmode="numeric" data-act="spct" data-id="${se.id}" value="${se.pct ?? f.defPct}" class="num"></div>` : ""}
+      ${f.duels ? `<div class="field"><label for="pm${se.id}">% del hándicap en los individuales</label><input id="pm${se.id}" inputmode="numeric" data-act="sdpct" data-id="${se.id}" value="${se.duelPct ?? 100}" class="num"></div>
+        <p class="note">Individuales: se enfrentan los de la misma fila de cada pareja (arriba contra arriba, abajo contra abajo). ${pointsOf(c, ms[0] || { session: se.id, a: [1, 2] })} puntos por partido.</p>` : ""}
+      ${!f.team ? `<div class="field"><label for="pc${se.id}">% del hándicap${f.duels ? " en el four-ball" : ""}</label><input id="pc${se.id}" inputmode="numeric" data-act="spct" data-id="${se.id}" value="${se.pct ?? f.defPct}" class="num"></div>` : ""}
       <label class="check"><input type="checkbox" id="ok${se.id}" data-act="sconf" data-id="${se.id}" ${se.confirmed ? "checked" : ""}> Rating, slope y tarjeta confirmados con el club</label>
       ${!se.confirmed ? `<p class="note warn"><span class="chip warn">A confirmar</span> Mientras no esté confirmado, el hándicap y el stroke index son provisorios.</p>` : ""}
       <button class="btn sm" data-act="cardedit" data-id="${se.id}">${UI.cardEdit === se.id ? "Cerrar tarjeta" : "Editar tarjeta (par y stroke index)"}</button>
@@ -338,7 +336,7 @@ document.addEventListener("change", e => {
     else if (a === "stee") se.tee = el.value.trim() || se.tee;
     else if (a === "scr") { const v = num(el.value); if (v > 50 && v < 85) se.cr = v; }
     else if (a === "ssl") { const v = parseInt(el.value); if (v >= 55 && v <= 155) se.slope = v; }
-    else if (a === "smpct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.medalPct = v; }
+    else if (a === "sdpct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.duelPct = v; }
     else if (a === "spct") { const v = parseInt(el.value); if (v > 0 && v <= 100) se.pct = v; }
     else if (a === "sconf") se.confirmed = el.checked;
     else if (a === "hpar" || a === "hsi") {
